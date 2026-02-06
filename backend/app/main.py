@@ -454,6 +454,55 @@ try:
 except Exception as e:
     print(f"⚠️ 分享 API 注册失败: {e}")
 
+# ==================== 健康检查 ====================
+
+@app.get("/health")
+async def health_check():
+    """健康检查端点"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0"
+    }
+
+@app.get("/ready")
+async def readiness_check():
+    """就绪检查"""
+    # 检查数据库
+    try:
+        from app.db.factory import db
+        with db.get_session() as session:
+            session.execute("SELECT 1")
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+    
+    return {
+        "status": "healthy" if db_status == "healthy" else "degraded",
+        "database": db_status,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+# ==================== 指标端点 ====================
+
+@app.get("/metrics")
+async def metrics():
+    """应用指标 (简化版)"""
+    from app.db.factory import db
+    
+    try:
+        user_count = len(db.list_users())
+        kb_count = len(db.list_kbs())
+    except:
+        user_count = 0
+        kb_count = 0
+    
+    return {
+        "app_users_total": user_count,
+        "app_kb_total": kb_count,
+        "app_uptime_seconds": 0,  # 需要实现
+    }
+
 # ==================== 启动 ====================
 
 if __name__ == "__main__":

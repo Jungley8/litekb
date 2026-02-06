@@ -1,0 +1,79 @@
+# ==================== Docker 忽略 ====================
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Python
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+*.local
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 数据
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# 测试
+.pytest_cache
+.coverage
+htmlcov/
+*.cover
+
+# Node.js
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 日志
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.temp
+temp/
+
+# 文档
+docs/_build/
+*.md.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE 文件
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings
+
+# 敏感文件
+*.pem
+*.key
+*.crt
+ssl/

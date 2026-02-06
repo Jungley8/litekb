@@ -1,0 +1,248 @@
+# LiteKB 生产环境 Docker Compose
+
+version: '3.8'
+
+services:
+  # ==================== 后端 API ====================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: litekb/backend:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # 应用
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      
+      # 数据库
+      - DATABASE_URL=postgresql://litekb:${POSTGRES_PASSWORD}@postgres:5432/litekb
+      
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      
+      # Qdrant
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_PROVIDER=openai
+      - EMBEDDING_PROVIDER=openai
+      
+      # JWT
+      - TOKEN_EXPIRE_MINUTES=60
+      
+      # CORS
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    
+    networks:
+      - litekb_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ==================== Celery Worker ====================
+  celery-worker:
+    image: litekb/backend:latest
+    restart: unless-stopped
+    command: celery -A app.tasks worker --loglevel=info --concurrency=4
+    environment:
+      - DATABASE_URL=postgresql://litekb:${POSTGRES_PASSWORD}@postgres:5432/litekb
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_URL=redis://redis:6379/1
+    depends_on:
+      - redis
+      - postgres
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    networks:
+      - litekb_network
+
+  # ==================== Celery Beat ====================
+  celery-beat:
+    image: litekb/backend:latest
+    restart: unless-stopped
+    command: celery -A app.tasks beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://litekb:${POSTGRES_PASSWORD}@postgres:5432/litekb
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    networks:
+      - litekb_network
+
+  # ==================== 前端 ====================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: litekb/frontend:latest
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - litekb_network
+
+  # ==================== Nginx ====================
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - litekb_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ==================== PostgreSQL ====================
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=litekb
+      - POSTGRES_USER=litekb
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litekb -d litekb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - litekb_network
+
+  # ==================== Redis ====================
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - litekb_network
+
+  # ==================== Qdrant ====================
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+    networks:
+      - litekb_network
+
+  # ==================== 监控 (可选) ====================
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - litekb_network
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - litekb_network
+
+# ==================== 网络 ====================
+networks:
+  litekb_network:
+    driver: bridge
+
+# ==================== 存储 ====================
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  prometheus_data:
+  grafana_data:
+
+# ==================== Secrets ====================
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
