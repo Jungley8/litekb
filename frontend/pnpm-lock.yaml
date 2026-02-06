@@ -1,0 +1,46 @@
+{
+  "name": "litekb-frontend",
+  "lockfileVersion": "3.0.0",
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "litekb-frontend",
+      "version": "1.0.0",
+      "hasInstallScript": true,
+      "dependencies": {
+        "axios": "^1.7.0",
+        "d3": "^7.9.0",
+        "dayjs": "^1.11.0",
+        "highlight.js": "^11.10.0",
+        "marked": "^15.0.0",
+        "naive-ui": "^2.40.0",
+        "pinia": "^2.2.0",
+        "@vicons/ionicons5": "^0.12.0",
+        "vue": "^3.5.0",
+        "vue-router": "^4.4.0"
+      },
+      "devDependencies": {
+        "@eslint/js": "^9.12.0",
+        "@playwright/test": "^1.48.0",
+        "@types/d3": "^7.4.0",
+        "@types/node": "^22.0.0",
+        "@vitejs/plugin-vue": "^5.1.0",
+        "autoprefixer": "^10.4.0",
+        "eslint": "^9.12.0",
+        "eslint-plugin-vue": "^9.28.0",
+        "postcss": "^8.4.0",
+        "prettier": "^3.3.0",
+        "tailwindcss": "^3.4.0",
+        "typescript": "^5.6.0",
+        "vite": "^5.4.0",
+        "vitest": "^2.1.0",
+        "vue-tsc": "^2.1.0",
+        "@vue/test-utils": "^2.4.0"
+      },
+      "engines": {
+        "node": ">=20.0.0",
+        "pnpm": ">=9.0.0"
+      }
+    }
+  }
+}

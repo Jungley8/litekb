@@ -5,7 +5,7 @@ import naive from 'naive-ui'
 import axios from 'axios'
 
 // 全局样式
-import './styles/main.css'
+import './style.css'
 
 const app = createApp(App)
 

@@ -1,5 +1,17 @@
-"""
-PDF 处理 requirements
-"""
-PyMuPDF>=1.23.0
-pdfplumber>=0.10.0
+# LiteKB PDF 处理依赖
+
+# PDF 处理 (核心)
+PyMuPDF>=1.24.0  # fitz - 高性能
+pdfplumber>=0.11.0
+
+# OCR (可选)
+pytesseract>=0.3.10
+Pillow>=10.4.0
+
+# Excel/Office
+openpyxl>=3.1.5
+python-docx>=1.1.2
+
+# 音频处理 (可选)
+pydub>=0.25.1
+speechrecognition>=3.10.4
