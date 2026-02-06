@@ -81,6 +81,10 @@ app.add_middleware(
     period=60
 )
 
+# Tracing 中间件 (自动追踪 API 请求)
+from app.tracing.middleware import TracingMiddleware
+app.add_middleware(TracingMiddleware)
+
 # Helmet Headers (非调试模式)
 if not DEBUG:
     from app.middleware.helmet import HelmetMiddleware, HSTSMiddleware
@@ -445,6 +449,14 @@ try:
     from app.api.share import router as share_router
     app.include_router(share_router, prefix="")
     print("✅ 分享 API 已注册")
+
+
+try:
+    from app.api.tracing import router as tracing_router
+    app.include_router(tracing_router, prefix="")
+    print("✅ Tracing API 已注册")
+except Exception as e:
+    print(f"⚠️ Tracing API 注册失败: {e}")
 except Exception as e:
     print(f"⚠️ 分享 API 注册失败: {e}")
 
