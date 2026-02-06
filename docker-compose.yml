@@ -1,5 +1,3 @@
-# ==================== DOCKER ====================
-
 version: '3.8'
 
 services:
@@ -13,14 +11,56 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./data/litekb.db
       - QDRANT_URL=http://qdrant:6333
-      - JWT_SECRET_KEY=your-secret-key-change-in-production
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_URL=redis://redis:6379/1
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - backend_data:/app/data
       - ./backend:/app
     depends_on:
       - qdrant
+      - redis
+      - celery-worker
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    profiles:
+      - dev
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks worker --loglevel=info
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_URL=redis://redis:6379/1
+    depends_on:
+      - redis
+    profiles:
+      - dev
+
+  # Celery Beat (定时任务)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks beat --loglevel=info
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    profiles:
+      - dev
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
     profiles:
       - dev
 
@@ -65,7 +105,21 @@ services:
     profiles:
       - optional
 
+  # PostgreSQL (可选，生产用)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=litekb
+      - POSTGRES_USER=litekb
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    profiles:
+      - prod
+
 volumes:
   backend_data:
   qdrant_data:
+  redis_data:
   neo4j_data:
+  postgres_data:
