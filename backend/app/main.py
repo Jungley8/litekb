@@ -202,7 +202,7 @@ async def register(user: UserCreate):
         "email": user.email,
         "hashed_password": hashed,
     }
-    return User(**db.create_user(user_data["id"], user_data))
+    return db.create_user((user_data["id"], user_data))
 
 @app.post("/api/v1/auth/login", response_model=Token)
 async def login(user: UserLogin):
@@ -230,12 +230,12 @@ async def create_kb(kb: KnowledgeBaseCreate, current_user: User = Depends(get_cu
         "description": kb.description,
         "created_by": current_user.id,
     }
-    return KnowledgeBase(**db.create_kb(kb_data["id"], kb_data))
+    return db.create_kb((kb_data["id"], kb_data))
 
 @app.get("/api/v1/kb", response_model=List[KnowledgeBase])
 async def list_kbs(current_user: User = Depends(get_current_user)):
     """列出知识库"""
-    return [KnowledgeBase(**kb) for kb in db.list_kbs()]
+    return db.list_kbs()]
 
 @app.get("/api/v1/kb/{kb_id}", response_model=KnowledgeBase)
 async def get_kb(kb_id: str, current_user: User = Depends(get_current_user)):
@@ -268,12 +268,12 @@ async def create_doc(kb_id: str, doc: DocumentCreate, current_user: User = Depen
         "content": doc.content,
         "metadata": doc.metadata,
     }
-    return Document(**db.create_doc(doc_data["id"], doc_data))
+    return db.create_doc((doc_data["id"], doc_data))
 
 @app.get("/api/v1/kb/{kb_id}/docs", response_model=List[Document])
 async def list_documents(kb_id: str, skip: int = 0, limit: int = 100, current_user: User = Depends(get_current_user)):
     """列出文档"""
-    return [Document(**d) for d in db.list_docs(kb_id, skip, limit)]
+    return db.list_docs(kb_id, skip, limit)]
 
 @app.delete("/api/v1/kb/{kb_id}/docs/{doc_id}")
 async def delete_document(kb_id: str, doc_id: str, current_user: User = Depends(get_current_user)):
