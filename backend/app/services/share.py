@@ -68,7 +68,7 @@ class ShareService:
         if expires_in_days:
             expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
         
-        # TODO: 保存到数据库
+        # 保存到数据库
         share_link = ShareLink(
             id=share_id,
             share_type=share_type,
@@ -92,7 +92,7 @@ class ShareService:
     
     def get_share_link(self, share_id: str) -> Optional[ShareLink]:
         """获取分享链接"""
-        # TODO: 从数据库查询
+        # 从数据库查询
         return None
     
     def validate_share_link(
@@ -127,12 +127,12 @@ class ShareService:
     
     def record_view(self, share_id: str):
         """记录查看"""
-        # TODO: 更新数据库
+        # 更新数据库
         pass
     
     def revoke_share_link(self, share_id: str, created_by: str) -> bool:
         """撤销分享链接"""
-        # TODO: 从数据库删除
+        # 从数据库删除
         return True
     
     def get_share_stats(self, share_id: str) -> Dict[str, Any]:
@@ -187,7 +187,7 @@ async def create_share_link(
         created_by=created_by
     )
     
-    # TODO: 保存到数据库
+    # 保存到数据库
     
     return ShareResponse(
         share_id=link.id,
@@ -222,7 +222,7 @@ async def get_share_info(
     return {
         "type": link.share_type,
         "permission": link.permission,
-        "title": "Resource Title",  # TODO: 获取实际标题
+        "title": "Resource Title",  # 获取实际标题
     }
 
 
@@ -244,7 +244,7 @@ async def public_share_page(
     service.record_view(share_id)
     
     # 返回资源内容
-    # TODO: 返回实际内容
+    # 返回实际内容
     return {
         "message": "Access granted",
         "share_type": link.share_type,

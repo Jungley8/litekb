@@ -1,301 +1,140 @@
 """
-WebSocket 实时通信服务
+WebSocket 服务
 """
-from typing import Dict, Any, List, Optional, Callable
-from datetime import datetime
-from dataclasses import dataclass, field
-from enum import Enum
-import json
-import asyncio
-from collections import defaultdict
-
-from fastapi import WebSocket, WebSocketDisconnect
+from typing import Dict, Set, Optional
 from loguru import logger
-
-
-class MessageType(str, Enum):
-    """消息类型"""
-    CHAT = "chat"
-    PROGRESS = "progress"
-    NOTIFICATION = "notification"
-    ERROR = "error"
-    TYPING = "typing"
-    PRESENCE = "presence"
-    DOCUMENT_UPDATE = "document_update"
-
-
-@dataclass
-class WebSocketMessage:
-    """WebSocket 消息"""
-    type: MessageType
-    payload: Dict[str, Any]
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    conversation_id: Optional[str] = None
+from datetime import datetime
 
 
 class ConnectionManager:
     """WebSocket 连接管理器"""
     
     def __init__(self):
-        # conversation_id -> set of WebSocket
-        self.active_connections: Dict[str, set] = defaultdict(set)
-        # user_id -> WebSocket
-        self.user_connections: Dict[str, WebSocket] = {}
-        # websocket -> user_id
-        self.connection_users: Dict[WebSocket, str] = {}
+        # user_id -> set of connections
+        self.active_connections: Dict[str, Set] = {}
+        # connection_id -> connection_info
+        self.connections: Dict[str, Dict] = {}
     
     async def connect(
         self,
-        websocket: WebSocket,
-        user_id: str,
-        conversation_id: Optional[str] = None
+        websocket,
+        user_id: str = "anonymous",
+        kb_id: Optional[str] = None,
     ):
         """建立连接"""
+        
+        connection_id = f"{user_id}_{datetime.now().timestamp()}"
+        
         await websocket.accept()
         
-        self.user_connections[user_id] = websocket
-        self.connection_users[websocket] = user_id
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = set()
         
-        if conversation_id:
-            self.active_connections[conversation_id].add(websocket)
-            # 通知其他人
-            await self.broadcast_presence(conversation_id, user_id, "joined")
+        self.active_connections[user_id].add(connection_id)
+        self.connections[connection_id] = {
+            "websocket": websocket,
+            "user_id": user_id,
+            "kb_id": kb_id,
+            "connected_at": datetime.now(),
+        }
+        
+        logger.info(f"WebSocket connected: {connection_id}")
+        
+        return connection_id
     
-    async def disconnect(
-        self,
-        websocket: WebSocket,
-        user_id: str,
-        conversation_id: Optional[str] = None
-    ):
+    async def disconnect(self, connection_id: str):
         """断开连接"""
-        if websocket in self.user_connections:
-            del self.user_connections[user_id]
         
-        if websocket in self.connection_users:
-            del self.connection_users[websocket]
-        
-        if conversation_id and websocket in self.active_connections[conversation_id]:
-            self.active_connections[conversation_id].remove(websocket)
-            await self.broadcast_presence(conversation_id, user_id, "left")
+        if connection_id in self.connections:
+            info = self.connections[connection_id]
+            user_id = info.get("user_id")
+            
+            if user_id and user_id in self.active_connections:
+                self.active_connections[user_id].discard(connection_id)
+            
+            del self.connections[connection_id]
+            
+            logger.info(f"WebSocket disconnected: {connection_id}")
     
     async def send_personal_message(
         self,
-        message: WebSocketMessage,
-        user_id: str
-    ):
-        """发送个人消息"""
-        if user_id in self.user_connections:
-            websocket = self.user_connections[user_id]
-            try:
-                await websocket.send_json(message.__dict__)
-            except Exception as e:
-                logger.error(f"Send message error: {e}")
-    
-    async def broadcast(
-        self,
-        message: WebSocketMessage,
-        conversation_id: str
-    ):
-        """广播到会话"""
-        connections = self.active_connections.get(conversation_id, set())
-        
-        for connection in connections:
-            try:
-                await connection.send_json(message.__dict__)
-            except Exception as e:
-                logger.error(f"Broadcast error: {e}")
-    
-    async def broadcast_presence(
-        self,
-        conversation_id: str,
+        message: str,
         user_id: str,
-        status: str
     ):
-        """广播在线状态"""
-        message = WebSocketMessage(
-            type=MessageType.PRESENCE,
-            payload={"user_id": user_id, "status": status},
-            conversation_id=conversation_id
-        )
-        await self.broadcast(message, conversation_id)
-    
-    async def broadcast_notification(
-        self,
-        title: str,
-        body: str,
-        user_ids: Optional[List[str]] = None
-    ):
-        """发送通知"""
-        message = WebSocketMessage(
-            type=MessageType.NOTIFICATION,
-            payload={"title": title, "body": body}
-        )
+        """发送消息给用户"""
         
-        if user_ids:
-            for user_id in user_ids:
-                await self.send_personal_message(message, user_id)
-        else:
-            # 广播给所有人
-            for user_id in self.user_connections:
-                await self.send_personal_message(message, user_id)
+        if user_id in self.active_connections:
+            for connection_id in self.active_connections[user_id]:
+                if connection_id in self.connections:
+                    ws = self.connections[connection_id]["websocket"]
+                    await ws.send_text(message)
     
-    def get_online_users(self, conversation_id: str) -> List[str]:
+    async def broadcast_to_kb(
+        self,
+        message: str,
+        kb_id: str,
+        exclude_user: Optional[str] = None,
+    ):
+        """广播到知识库"""
+        
+        for connection_id, info in self.connections.items():
+            if info.get("kb_id") == kb_id:
+                if exclude_user and info.get("user_id") == exclude_user:
+                    continue
+                
+                ws = info["websocket"]
+                await ws.send_text(message)
+    
+    async def broadcast(self, message: str):
+        """广播到所有连接"""
+        
+        for info in self.connections.values():
+            ws = info["websocket"]
+            await ws.send_text(message)
+    
+    def get_connection_count(self, user_id: Optional[str] = None) -> int:
+        """获取连接数"""
+        
+        if user_id:
+            return len(self.active_connections.get(user_id, set()))
+        
+        return len(self.connections)
+    
+    def get_online_users(self) -> List[str]:
         """获取在线用户"""
-        connections = self.active_connections.get(conversation_id, set())
-        return [
-            self.connection_users.get(conn)
-            for conn in connections
-            if self.connection_users.get(conn)
-        ]
+        
+        return list(self.active_connections.keys())
 
 
-# 全局连接管理器
+# 全局实例
 manager = ConnectionManager()
 
 
-# ==================== WebSocket 端点 ====================
-
-from fastapi import APIRouter, Depends
-from app.auth import get_current_user
-
-router = APIRouter()
-
-
-@router.websocket("/ws/chat/{conversation_id}")
-async def websocket_chat(
-    websocket: WebSocket,
-    conversation_id: str,
-    user_id: str = "anonymous"  # TODO: 从 token 获取
-):
-    """聊天 WebSocket"""
-    await manager.connect(websocket, user_id, conversation_id)
+# SSE 事件类型
+class SSEEvents:
+    """SSE 事件类型"""
     
-    try:
-        while True:
-            data = await websocket.receive_json()
-            message_type = data.get("type", "chat")
-            
-            if message_type == "chat":
-                # 转发消息给其他人
-                message = WebSocketMessage(
-                    type=MessageType.CHAT,
-                    payload=data.get("payload", {}),
-                    conversation_id=conversation_id
-                )
-                await manager.broadcast(message, conversation_id)
-            
-            elif message_type == "typing":
-                # 广播打字状态
-                await manager.broadcast(
-                    WebSocketMessage(
-                        type=MessageType.TYPING,
-                        payload={"user_id": user_id, "is_typing": data.get("is_typing", False)},
-                        conversation_id=conversation_id
-                    ),
-                    conversation_id
-                )
+    CHUNK = "chunk"
+    SOURCES = "sources"
+    DONE = "done"
+    ERROR = "error"
+    PROGRESS = "progress"
+    NOTIFICATION = "notification"
     
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket, user_id, conversation_id)
-
-
-@router.websocket("/ws/notifications")
-async def websocket_notifications(
-    websocket: WebSocket,
-    user_id: str = "anonymous"
-):
-    """通知 WebSocket (个人)"""
-    await manager.connect(websocket, user_id)
+    @classmethod
+    def chunk(cls, data: str) -> str:
+        return f"event: {cls.CHUNK}\ndata: {data}\n\n"
     
-    try:
-        while True:
-            data = await websocket.receive_json()
-            # 处理个人消息
-            pass
+    @classmethod
+    def sources(cls, sources: list) -> str:
+        import json
+        return f"event: {cls.SOURCES}\ndata: {json.dumps({'sources': sources})}\n\n"
     
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket, user_id)
-
-
-# ==================== 通知服务 ====================
-
-class NotificationService:
-    """通知服务"""
+    @classmethod
+    def done(cls) -> str:
+        return f"event: {cls.DONE}\n\n"
     
-    @staticmethod
-    async def notify_document_uploaded(
-        kb_id: str,
-        doc_title: str,
-        user_ids: List[str]
-    ):
-        """通知文档上传"""
-        await manager.broadcast_notification(
-            title="文档上传完成",
-            body=f"「{doc_title}」已成功上传并索引",
-            user_ids=user_ids
-        )
-    
-    @staticmethod
-    async def notify_mention(
-        mentioned_user_id: str,
-        from_user: str,
-        document_id: str,
-        context: str
-    ):
-        """通知被提及"""
-        await manager.send_personal_message(
-            WebSocketMessage(
-                type=MessageType.NOTIFICATION,
-                payload={
-                    "title": "你被提及",
-                    "body": f"{from_user} 在文档中提及了你",
-                    "data": {"document_id": document_id, "context": context}
-                }
-            ),
-            mentioned_user_id
-        )
-    
-    @staticmethod
-    async def notify_invitation(
-        user_id: str,
-        org_name: str,
-        inviter: str
-    ):
-        """通知邀请"""
-        await manager.send_personal_message(
-            WebSocketMessage(
-                type=MessageType.NOTIFICATION,
-                payload={
-                    "title": "加入组织",
-                    "body": f"{inviter} 邀请你加入 {org_name}",
-                    "action": "accept_invitation"
-                }
-            ),
-            user_id
-        )
-
-
-# ==================== SSE 备用方案 ====================
-
-from sse_starlette.sse import EventSourceResponse
-from fastapi import Request
-
-
-async def notification_stream(request: Request):
-    """SSE 通知流"""
-    async def event_generator():
-        queue = asyncio.Queue()
-        
-        # TODO: 将队列注册到管理器
-        
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                
-                message = await asyncio.wait_for(queue.get(), timeout=30)
-                yield message
-        except asyncio.TimeoutError:
-            yield {"event": "heartbeat", "data": "ping"}
-    
-    return EventSourceResponse(event_generator())
+    @classmethod
+    def error(cls, message: str) -> str:
+        import json
+        return f"event: {cls.ERROR}\ndata: {json.dumps({'detail': message})}\n\n"

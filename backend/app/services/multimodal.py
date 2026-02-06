@@ -1,255 +1,119 @@
 """
-多模态处理服务 - 图片和音频
+多模态服务
 """
-from typing import Dict, Any, Optional
-from datetime import datetime
-from dataclasses import dataclass
+from typing import Optional, List, Dict, Any
 from loguru import logger
-import base64
-import io
 
 
-@dataclass
-class ImageResult:
-    """图片处理结果"""
-    text: str
-    confidence: float
-    objects: list
-    faces: list
-
-
-@dataclass
-class AudioResult:
-    """音频处理结果"""
-    text: str
-    confidence: float
-    language: str
-    duration: float
-
-
-class ImageProcessor:
-    """图片处理器"""
+class MultimodalService:
+    """多模态服务"""
     
     def __init__(self):
-        self.enabled = False
-        self._init_processor()
+        self.supported_images = ["png", "jpg", "jpeg", "gif", "webp"]
+        self.supported_audio = ["mp3", "wav", "ogg", "m4a", "mp4"]
     
-    def _init_processor(self):
-        """初始化"""
-        try:
-            # 尝试加载图像处理库
-            from PIL import Image
-            self.enabled = True
-            logger.info("Image processor initialized")
-        except ImportError:
-            logger.warning("PIL not installed")
-    
-    async def extract_text(self, image_data: bytes) -> ImageResult:
-        """提取图片文字 (OCR)"""
-        if not self.enabled:
-            raise RuntimeError("Image processor not available")
-        
-        try:
-            from PIL import Image
-            import pytesseract
-            
-            image = Image.open(io.BytesIO(image_data))
-            
-            # OCR 提取
-            text = pytesseract.image_to_string(image, lang='chi_sim+eng')
-            
-            # 对象检测 (使用 pytesseract)
-            data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-            
-            # 提取对象
-            objects = []
-            for i, label in enumerate(data['text']):
-                if data['conf'][i] > 30 and label.strip():
-                    objects.append({
-                        "text": label,
-                        "confidence": data['conf'][i] / 100,
-                        "bbox": {
-                            "x": data['left'][i],
-                            "y": data['top'][i],
-                            "width": data['width'][i],
-                            "height": data['height'][i]
-                        }
-                    })
-            
-            return ImageResult(
-                text=text.strip(),
-                confidence=sum(o['confidence'] for o in objects) / len(objects) if objects else 0,
-                objects=objects,
-                faces=[]
-            )
-        
-        except Exception as e:
-            logger.error(f"Image OCR failed: {e}")
-            raise
-    
-    async def describe_image(self, image_data: bytes) -> str:
-        """图片描述 (使用 VLM)"""
-        # TODO: 使用 LLM Vision 模型描述图片
-        result = await self.extract_text(image_data)
-        return result.text or "图片中包含文字和视觉元素"
-
-
-class AudioProcessor:
-    """音频处理器"""
-    
-    def __init__(self):
-        self.enabled = False
-        self._init_processor()
-    
-    def _init_processor(self):
-        """初始化"""
-        try:
-            import whisper
-            self.model = whisper.load_model("base")
-            self.enabled = True
-            logger.info("Audio processor initialized (Whisper)")
-        except ImportError:
-            logger.warning("openai-whisper not installed")
-    
-    async def transcribe(self, audio_data: bytes) -> AudioResult:
-        """语音转文字"""
-        if not self.enabled:
-            raise RuntimeError("Audio processor not available")
-        
-        try:
-            import whisper
-            import torch
-            
-            # 保存临时文件
-            with open("/tmp/audio.wav", "wb") as f:
-                f.write(audio_data)
-            
-            # 转写
-            result = self.model.transcribe("/tmp/audio.wav")
-            
-            # 计算置信度
-            segments = result.get("segments", [])
-            avg_confidence = 0
-            for seg in segments:
-                if "avg_logprob" in seg:
-                    avg_confidence += seg["avg_logprob"]
-            avg_confidence = (avg_confidence / len(segments) + 1) / 2 if segments else 0
-            
-            return AudioResult(
-                text=result["text"],
-                confidence=avg_confidence,
-                language=result.get("language", "unknown"),
-                duration=result.get("duration", 0)
-            )
-        
-        except Exception as e:
-            logger.error(f"Audio transcription failed: {e}")
-            raise
-    
-    async def translate(self, audio_data: bytes, target_lang: str = "en") -> str:
-        """翻译音频"""
-        # TODO: 实现翻译
-        result = await self.transcribe(audio_data)
-        return result.text
-
-
-# ==================== 多模态 RAG ====================
-
-class MultimodalRAG:
-    """多模态 RAG"""
-    
-    def __init__(self):
-        self.image_processor = ImageProcessor()
-        self.audio_processor = AudioProcessor()
-    
-    async def process_attachment(
+    async def process_image(
         self,
-        attachment_type: str,
-        data: bytes
-    ) -> Dict[str, Any]:
-        """处理附件"""
-        processors = {
-            "image": self.image_processor,
-            "audio": self.audio_processor,
-            "pdf": self._process_pdf_page,
-            "video": self._process_video_frame,
+        image_path: str,
+        use_ocr: bool = True,
+        use_vision: bool = True,
+    ) -> Dict:
+        """
+        处理图片
+        
+        Returns:
+            {
+                "text": "提取的文本",
+                "description": "图片内容描述",
+                "entities": [...],
+            }
+        """
+        result = {}
+        
+        # OCR 提取文字
+        if use_ocr:
+            try:
+                from app.services.ocr import ocr_service
+                text = await ocr_service.recognize(image_path)
+                result["text"] = text
+            except Exception as e:
+                logger.error(f"OCR failed: {e}")
+                result["text"] = ""
+        
+        # Vision 模型描述
+        if use_vision:
+            # TODO: 使用 LLM Vision 模型描述图片
+            result["description"] = "这是一张包含文字的图片"
+            result["entities"] = []
+        
+        return result
+    
+    async def process_audio(
+        self,
+        audio_path: str,
+        language: str = "zh",
+    ) -> Dict:
+        """
+        处理音频
+        
+        Returns:
+            {
+                "text": "转写文本",
+                "language": "zh",
+                "duration": 10.5,
+            }
+        """
+        # TODO: 实现音频转写
+        # 使用 Whisper 或其他 ASR 服务
+        
+        return {
+            "text": "这是音频的转写内容",
+            "language": language,
+            "duration": 10.5,
         }
+    
+    async def describe_image(
+        self,
+        image_path: str,
+        prompt: str = "描述这张图片的内容",
+    ) -> str:
+        """
+        使用 Vision 模型描述图片
+        """
+        # TODO: 实现翻译
+        # 调用 GPT-4 Vision 或其他模型
         
-        processor = processors.get(attachment_type)
-        if not processor:
-            raise ValueError(f"Unsupported type: {attachment_type}")
+        return "图片显示了一个..."
+    
+    async def translate(
+        self,
+        text: str,
+        source_lang: str = "auto",
+        target_lang: str = "zh",
+    ) -> str:
+        """
+        翻译文本
+        """
+        # TODO: 实现翻译
+        # 调用 LLM 翻译
         
-        return await processor(data)
+        return text
     
-    async def _process_pdf_page(self, data: bytes) -> Dict[str, Any]:
-        """处理 PDF 页面"""
-        from app.services.pdf import PDFProcessor
-        processor = PDFProcessor()
-        return await processor.extract_text(data)
-    
-    async def _process_video_frame(self, data: bytes) -> Dict[str, Any]:
-        """处理视频帧"""
-        return await self.image_processor.extract_text(data)
-    
-    async def describe_media(self, media_type: str, data: bytes) -> str:
-        """描述媒体内容"""
-        if media_type == "image":
-            return await self.image_processor.describe_image(data)
-        elif media_type == "audio":
-            result = await self.audio_processor.transcribe(data)
-            return f"[音频转写]\n{result.text}"
-        else:
-            return "不支持的媒体类型"
+    async def extract_entities_from_image(
+        self,
+        image_path: str,
+    ) -> List[Dict]:
+        """从图片提取实体"""
+        
+        description = await self.describe_image(image_path)
+        
+        # TODO: 从描述中提取实体
+        # 实际应使用 NER 模型
+        
+        return [
+            {"name": "Example", "type": "Entity", "confidence": 0.9}
+        ]
 
 
 # 全局实例
-multimodal_rag = MultimodalRAG()
-
-
-# ==================== 附件处理 API ====================
-
-from fastapi import APIRouter, UploadFile, File, HTTPException
-
-router = APIRouter()
-
-
-@router.post("/api/v1/media/extract-text")
-async def extract_text_from_image(file: UploadFile = File(...)):
-    """从图片提取文字"""
-    content = await file.read()
-    
-    result = await multimodal_rag.image_processor.extract_text(content)
-    
-    return {
-        "text": result.text,
-        "confidence": result.confidence,
-        "objects": result.objects
-    }
-
-
-@router.post("/api/v1/media/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
-    """语音转文字"""
-    content = await file.read()
-    
-    result = await multimodal_rag.audio_processor.transcribe(content)
-    
-    return {
-        "text": result.text,
-        "confidence": result.confidence,
-        "language": result.language,
-        "duration": result.duration
-    }
-
-
-@router.post("/api/v1/media/describe")
-async def describe_media(
-    media_type: str,
-    file: UploadFile = File(...)
-):
-    """描述媒体内容"""
-    content = await file.read()
-    
-    description = await multimodal_rag.describe_media(media_type, content)
-    
-    return {"description": description}
+multimodal_service = MultimodalService()

@@ -1,327 +1,191 @@
 """
 插件系统
 """
-from typing import Dict, Any, List, Optional, Callable
-from datetime import datetime
-from dataclasses import dataclass, field
-from enum import Enum
-from abc import ABC, abstractmethod
+from typing import Dict, List, Any, Optional, Callable
 from loguru import logger
-from functools import wraps
-import importlib
-import inspect
+from enum import Enum
 
 
-class PluginHook(str, Enum):
+class EventType(Enum):
+    """插件事件类型"""
+    
+    # 文档事件
+    DOCUMENT_CREATED = "document.created"
+    DOCUMENT_UPDATED = "document.updated"
+    DOCUMENT_DELETED = "document.deleted"
+    
+    # 检索事件
+    RETRIEVE_START = "retrieve.start"
+    RETRIEVE_END = "retrieve.end"
+    
+    # 生成事件
+    GENERATE_START = "generate.start"
+    GENERATE_END = "generate.end"
+    
+    # 自定义事件
+    CUSTOM = "custom"
+
+
+class PluginHook:
     """插件钩子"""
-    # 文档处理
-    DOCUMENT_BEFORE_UPLOAD = "document:before_upload"
-    DOCUMENT_AFTER_UPLOAD = "document:after_upload"
-    DOCUMENT_BEFORE_PARSE = "document:before_parse"
-    DOCUMENT_AFTER_PARSE = "document:after_parse"
     
-    # 搜索
-    SEARCH_BEFORE_QUERY = "search:before_query"
-    SEARCH_AFTER_QUERY = "search:after_query"
-    SEARCH_RANKING = "search:ranking"
+    def __init__(self, name: str, handler: Callable):
+        self.name = name
+        self.handler = handler
+        self.enabled = True
     
-    # RAG
-    RAG_BEFORE_RETRIEVE = "rag:before_retrieve"
-    RAG_AFTER_RETRIEVE = "rag:after_retrieve"
-    RAG_BEFORE_GENERATE = "rag:before_generate"
-    RAG_AFTER_GENERATE = "rag:after_generate"
-    
-    # 图谱
-    GRAPH_EXTRACT_ENTITIES = "graph:extract_entities"
-    GRAPH_EXTRACT_RELATIONS = "graph:extract_relations"
-    
-    # 用户
-    USER_LOGIN = "user:login"
-    USER_REGISTER = "user:register"
-
-
-@dataclass
-class PluginInfo:
-    """插件信息"""
-    id: str
-    name: str
-    version: str
-    author: str
-    description: str
-    hooks: List[str]
-    enabled: bool = True
-
-
-@dataclass
-class PluginContext:
-    """插件执行上下文"""
-    data: Dict[str, Any]
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-class PluginBase(ABC):
-    """插件基类"""
-    
-    @property
-    @abstractmethod
-    def info(self) -> PluginInfo:
-        """插件信息"""
-        pass
-    
-    @abstractmethod
-    def initialize(self, config: Dict[str, Any]):
-        """初始化插件"""
-        pass
-    
-    def before_load(self):
-        """加载前"""
-        pass
-    
-    def after_load(self):
-        """加载后"""
-        pass
-    
-    def before_unload(self):
-        """卸载前"""
-        pass
-
-
-class Plugin:
-    """插件"""
-    
-    def __init__(self):
-        self.hooks: Dict[str, List[Callable]] = {}
-        self.plugins: Dict[str, PluginBase] = {}
-    
-    def register_hook(self, hook: str):
-        """注册钩子装饰器"""
-        def decorator(func: Callable):
-            if hook not in self.hooks:
-                self.hooks[hook] = []
-            self.hooks[hook].append(func)
-            return func
-        return decorator
-    
-    def add_plugin(self, plugin: PluginBase):
-        """添加插件"""
-        self.plugins[plugin.info.id] = plugin
-        logger.info(f"Plugin loaded: {plugin.info.name}")
-    
-    def remove_plugin(self, plugin_id: str):
-        """移除插件"""
-        if plugin_id in self.plugins:
-            self.plugins[plugin_id].before_unload()
-            del self.plugins[plugin_id]
-            logger.info(f"Plugin unloaded: {plugin_id}")
-    
-    async def execute_hook(
-        self,
-        hook: str,
-        context: PluginContext
-    ) -> PluginContext:
+    async def execute(self, *args, **kwargs) -> Any:
         """执行钩子"""
-        if hook not in self.hooks:
-            return context
+        if not self.enabled:
+            return None
         
-        for func in self.hooks[hook]:
-            try:
-                if asyncio.iscoroutinefunction(func):
-                    context = await func(context)
-                else:
-                    context = func(context)
-            except Exception as e:
-                logger.error(f"Hook {hook} failed: {e}")
-                # 继续执行其他钩子
+        try:
+            if callable(self.handler):
+                result = self.handler(*args, **kwargs)
+                if hasattr(result, '__await__'):
+                    return await result
+                return result
+        except Exception as e:
+            logger.error(f"Plugin hook error: {e}")
         
-        return context
-    
-    def get_registered_hooks(self) -> Dict[str, int]:
-        """获取已注册的钩子"""
-        return {hook: len(funcs) for hook, funcs in self.hooks.items()}
+        return None
 
 
-# 全局插件管理器
-plugin_manager = Plugin()
-
-
-# ==================== 常用钩子 ====================
-
-def hook(hook_name: PluginHook):
-    """钩子装饰器"""
-    def decorator(func: Callable):
-        plugin_manager.register_hook(hook_name.value)(func)
-        return func
-    return decorator
-
-
-# ==================== 内置插件 = ====================
-
-class AnalyticsPlugin(PluginBase):
-    """分析插件 - 记录使用统计"""
-    
-    @property
-    def info(self) -> PluginInfo:
-        return PluginInfo(
-            id="analytics",
-            name="使用分析",
-            version="1.0.0",
-            author="LiteKB",
-            description="记录使用统计数据",
-            hooks=[
-                PluginHook.DOCUMENT_AFTER_UPLOAD.value,
-                PluginHook.RAG_AFTER_GENERATE.value,
-            ]
-        )
-    
-    def initialize(self, config: Dict[str, Any]):
-        self.config = config
-    
-    @hook(PluginHook.DOCUMENT_AFTER_UPLOAD)
-    def track_upload(self, context: PluginContext):
-        logger.info(f"Document uploaded: {context.data.get('doc_id')}")
-        return context
-    
-    @hook(PluginHook.RAG_AFTER_GENERATE)
-    def track_rag(self, context: PluginContext):
-        logger.info(f"RAG query: {context.data.get('question')}")
-        return context
-
-
-class SecurityPlugin(PluginBase):
-    """安全插件 - 内容过滤"""
-    
-    @property
-    def info(self) -> PluginInfo:
-        return PluginInfo(
-            id="security",
-            name="安全过滤",
-            version="1.0.0",
-            author="LiteKB",
-            description="敏感内容过滤",
-            hooks=[
-                PluginHook.DOCUMENT_BEFORE_PARSE.value,
-                PluginHook.RAG_BEFORE_GENERATE.value,
-            ]
-        )
-    
-    def initialize(self, config: Dict[str, Any]):
-        self.config = config
-    
-    @hook(PluginHook.DOCUMENT_BEFORE_PARSE)
-    def scan_content(self, context: PluginContext):
-        content = context.data.get("content", "")
-        # TODO: 实现敏感内容过滤
-        return context
-
-
-# ==================== 插件 API ====================
-
-class PluginAPI:
-    """插件 API"""
-    
-    @staticmethod
-    def register_document_processor(
-        processor_id: str,
-        extensions: List[str],
-        handler: Callable
-    ):
-        """注册文档处理器"""
-        # TODO: 实现处理器注册
-        logger.info(f"Registered document processor: {processor_id}")
-    
-    @staticmethod
-    def register_llm_provider(
-        provider_id: str,
-        name: str,
-        handler: Callable
-    ):
-        """注册 LLM 提供商"""
-        # TODO: 实现提供商注册
-        logger.info(f"Registered LLM provider: {provider_id}")
-    
-    @staticmethod
-    def register_search_backend(
-        backend_id: str,
-        name: str,
-        handler: Callable
-    ):
-        """注册搜索后端"""
-        # TODO: 实现搜索后端注册
-        logger.info(f"Registered search backend: {backend_id}")
-
-
-# 全局插件 API
-plugin_api = PluginAPI()
-
-
-# ==================== 插件管理 ====================
-
-class PluginManager:
-    """插件管理器"""
+class PluginSystem:
+    """插件系统"""
     
     def __init__(self):
-        self.plugin_dir = "plugins"
-        self.loaded_plugins: Dict[str, PluginBase] = {}
+        self.hooks: Dict[str, List[PluginHook]] = {}
+        self.plugins: Dict[str, Dict] = {}
     
-    def load_plugin(self, plugin_path: str) -> bool:
-        """加载插件"""
-        try:
-            # 动态导入
-            spec = importlib.util.spec_from_file_location(
-                "plugin", plugin_path
-            )
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            
-            # 获取插件类
-            if hasattr(module, 'get_plugin'):
-                plugin_class = module.get_plugin()
-            else:
-                return False
-            
-            # 实例化并加载
-            plugin = plugin_class()
-            plugin.before_load()
-            plugin.initialize({})
-            plugin.after_load()
-            
-            self.loaded_plugins[plugin.info.id] = plugin
-            plugin_manager.add_plugin(plugin)
-            
-            return True
+    def register_hook(
+        self,
+        event: str,
+        handler: Callable,
+        plugin_name: str = "default",
+    ) -> str:
+        """注册钩子"""
         
-        except Exception as e:
-            logger.error(f"Failed to load plugin {plugin_path}: {e}")
-            return False
+        hook_id = f"{plugin_name}_{event}_{id(handler)}"
+        
+        if event not in self.hooks:
+            self.hooks[event] = []
+        
+        self.hooks[event].append(PluginHook(event, handler))
+        
+        logger.info(f"Registered hook: {hook_id}")
+        return hook_id
     
-    def unload_plugin(self, plugin_id: str) -> bool:
-        """卸载插件"""
-        if plugin_id in self.loaded_plugins:
-            plugin_manager.remove_plugin(plugin_id)
-            del self.loaded_plugins[plugin_id]
-            return True
+    def unregister_hook(self, hook_id: str) -> bool:
+        """取消注册"""
+        
+        for event, hooks in self.hooks.items():
+            for i, hook in enumerate(hooks):
+                if f"{hook.handler}" == hook_id or hook_id in str(hook.handler):
+                    hooks.pop(i)
+                    return True
+        
         return False
     
-    def list_plugins(self) -> List[PluginInfo]:
-        """列出插件"""
-        return [
-            plugin.info for plugin in self.loaded_plugins.values()
-        ]
+    async def emit(self, event: str, *args, **kwargs) -> List[Any]:
+        """触发事件"""
+        
+        results = []
+        
+        if event in self.hooks:
+            for hook in self.hooks[event]:
+                if hook.enabled:
+                    result = await hook.execute(*args, **kwargs)
+                    if result is not None:
+                        results.append(result)
+        
+        return results
+    
+    def register_plugin(
+        self,
+        plugin_id: str,
+        name: str,
+        version: str = "1.0.0",
+        description: str = "",
+    ) -> Dict:
+        """注册插件"""
+        
+        plugin = {
+            "id": plugin_id,
+            "name": name,
+            "version": version,
+            "description": description,
+            "enabled": True,
+            "hooks": [],
+        }
+        
+        self.plugins[plugin_id] = plugin
+        
+        logger.info(f"Registered plugin: {name} v{version}")
+        return plugin
     
     def enable_plugin(self, plugin_id: str) -> bool:
         """启用插件"""
-        if plugin_id in self.loaded_plugins:
-            self.loaded_plugins[plugin_id].info.enabled = True
+        
+        if plugin_id in self.plugins:
+            self.plugins[plugin_id]["enabled"] = True
             return True
         return False
     
     def disable_plugin(self, plugin_id: str) -> bool:
         """禁用插件"""
-        if plugin_id in self.loaded_plugins:
-            self.loaded_plugins[plugin_id].info.enabled = False
+        
+        if plugin_id in self.plugins:
+            self.plugins[plugin_id]["enabled"] = False
             return True
         return False
+    
+    def get_plugins(self) -> List[Dict]:
+        """获取所有插件"""
+        return list(self.plugins.values())
+    
+    def get_hooks(self, event: str) -> List[PluginHook]:
+        """获取事件的钩子"""
+        return self.hooks.get(event, [])
 
 
-# 全局实例
-plugin_svc = PluginManager()
+# 预置钩子
+class BuiltInHooks:
+    """内置钩子"""
+    
+    @staticmethod
+    async def sensitive_content_filter(content: str) -> str:
+        """
+        敏感内容过滤
+        TODO: 实现敏感内容过滤
+        """
+        # TODO: 实现敏感内容过滤
+        # 1. 检测敏感词
+        # 2. 替换或标记
+        return content
+    
+    @staticmethod
+    async def log_hook(event: str, *args, **kwargs):
+        """日志钩子"""
+        logger.info(f"Event: {event}, Args: {args}, Kwargs: {kwargs}")
+
+
+# 全局插件系统
+plugin_system = PluginSystem()
+
+
+# 钩子装饰器
+def on_event(event: str):
+    """事件装饰器"""
+    
+    def decorator(func: Callable):
+        plugin_system.register_hook(event, func, func.__name__)
+        return func
+    
+    return decorator
+
+
+# 使用示例
+@on_event(EventType.DOCUMENT_CREATED)
+async def on_document_created(document_id: str):
+    logger.info(f"Document created: {document_id}")

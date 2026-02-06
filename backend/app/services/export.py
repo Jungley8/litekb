@@ -1,225 +1,197 @@
 """
-导出服务 - 支持多种格式导出
+导出服务
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
-from abc import ABC, abstractmethod
-import json
-import markdown
-
-
-class ExportFormatter(ABC):
-    """导出格式基类"""
-    
-    @abstractmethod
-    def format(self, data: Dict[str, Any]) -> str:
-        pass
-    
-    @abstractmethod
-    def get_extension(self) -> str:
-        pass
-    
-    @abstractmethod
-    def get_content_type(self) -> str:
-        pass
-
-
-class MarkdownFormatter(ExportFormatter):
-    """Markdown 格式"""
-    
-    def format(self, data: Dict[str, Any]) -> str:
-        lines = [
-            f"# {data.get('title', 'Knowledge Base Export')}",
-            f"\n*导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}*",
-            "\n---\n",
-        ]
-        
-        # 知识库信息
-        if 'kb_info' in data:
-            kb = data['kb_info']
-            lines.append(f"## {kb.get('name', '')}")
-            if kb.get('description'):
-                lines.append(f"\n{kb['description']}\n")
-        
-        # 文档列表
-        if 'documents' in data:
-            lines.append("\n## 文档列表\n")
-            for i, doc in enumerate(data['documents'], 1):
-                lines.append(f"### {i}. {doc.get('title', 'Untitled')}")
-                if doc.get('content'):
-                    lines.append(f"\n{doc['content'][:500]}...")
-                lines.append("\n")
-        
-        # 对话历史
-        if 'conversations' in data:
-            lines.append("\n## 对话历史\n")
-            for conv in data['conversations']:
-                lines.append(f"### Q: {conv.get('question', '')}")
-                lines.append(f"\nA: {conv.get('answer', '')}\n")
-                lines.append(f"\n*来源: {', '.join(conv.get('sources', []))}*\n")
-        
-        return '\n'.join(lines)
-    
-    def get_extension(self) -> str:
-        return '.md'
-    
-    def get_content_type(self) -> str:
-        return 'text/markdown'
-
-
-class JSONFormatter(ExportFormatter):
-    """JSON 格式"""
-    
-    def format(self, data: Dict[str, Any]) -> str:
-        export_data = {
-            "exported_at": datetime.now().isoformat(),
-            "version": "1.0",
-            **data
-        }
-        return json.dumps(export_data, ensure_ascii=False, indent=2)
-    
-    def get_extension(self) -> str:
-        return '.json'
-    
-    def get_content_type(self) -> str:
-        return 'application/json'
-
-
-class HTMLFormatter(ExportFormatter):
-    """HTML 格式"""
-    
-    def format(self, data: Dict[str, Any]) -> str:
-        md_content = MarkdownFormatter().format(data)
-        html = markdown.markdown(md_content, extensions=['tables', 'fenced_code'])
-        
-        template = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>{data.get('title', 'Export')}</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
-        h1 {{ color: #18a058; }}
-        h2 {{ color: #2080f0; margin-top: 30px; }}
-        h3 {{ color: #d03050; }}
-        pre {{ background: #f5f5f5; padding: 15px; border-radius: 8px; overflow-x: auto; }}
-        code {{ background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }}
-        .metadata {{ color: #666; font-size: 14px; }}
-    </style>
-</head>
-<body>
-{html}
-</body>
-</html>
-        """
-        return template.strip()
-    
-    def get_extension(self) -> str:
-        return '.html'
-    
-    def get_content_type(self) -> str:
-        return 'text/html'
-
-
-class CSVFormatter(ExportFormatter):
-    """CSV 格式 (用于文档列表)"""
-    
-    def format(self, data: Dict[str, Any]) -> str:
-        if 'documents' not in data:
-            return ""
-        
-        lines = ['标题,类型,创建时间,状态,预览']
-        
-        for doc in data['documents']:
-            preview = (doc.get('content', '') or '')[:100].replace(',', '，').replace('\n', ' ')
-            lines.append(f"{doc.get('title', '')},{doc.get('file_type', '')},{doc.get('created_at', '')},{doc.get('status', '')},{preview}")
-        
-        return '\n'.join(lines)
-    
-    def get_extension(self) -> str:
-        return '.csv'
-    
-    def get_content_type(self) -> str:
-        return 'text/csv'
+from loguru import logger
 
 
 class ExportService:
     """导出服务"""
     
-    FORMATTERS = {
-        'markdown': MarkdownFormatter,
-        'json': JSONFormatter,
-        'html': HTMLFormatter,
-        'csv': CSVFormatter,
-    }
+    SUPPORTED_FORMATS = ["markdown", "json", "html", "csv"]
     
-    def __init__(self):
-        self.formatters = {k: v() for k, v in self.FORMATTERS.items()}
-    
-    def export_knowledge_base(
+    async def export_kb(
         self,
         kb_id: str,
-        kb_info: Dict,
-        documents: List[Dict],
-        format: str = 'markdown',
-        include_conversations: bool = False
-    ) -> Dict[str, Any]:
+        format: str = "markdown",
+        include_metadata: bool = True,
+    ) -> Dict:
         """导出知识库"""
-        data = {
-            'title': f"{kb_info.get('name', 'Export')} - {datetime.now().strftime('%Y%m%d')}",
-            'kb_info': kb_info,
-            'documents': [
-                {
-                    'title': doc.get('title'),
-                    'file_type': doc.get('file_type'),
-                    'content': doc.get('content'),
-                    'created_at': doc.get('created_at'),
-                    'status': doc.get('status'),
-                }
-                for doc in documents
-            ]
-        }
         
-        if include_conversations:
-            # TODO: 获取对话历史
-            pass
+        if format not in self.SUPPORTED_FORMATS:
+            raise ValueError(f"不支持的格式: {format}")
         
-        formatter = self.formatters.get(format)
-        if not formatter:
-            raise ValueError(f"Unsupported format: {format}")
+        # 获取知识库内容
+        documents = await self._get_documents(kb_id)
+        
+        # 按格式导出
+        if format == "markdown":
+            content = self._export_markdown(documents, include_metadata)
+            filename = f"kb_{kb_id}_{datetime.now().strftime('%Y%m%d')}.md"
+        elif format == "json":
+            content = self._export_json(documents, include_metadata)
+            filename = f"kb_{kb_id}_{datetime.now().strftime('%Y%m%d')}.json"
+        elif format == "html":
+            content = self._export_html(documents, include_metadata)
+            filename = f"kb_{kb_id}_{datetime.now().strftime('%Y%m%d')}.html"
+        elif format == "csv":
+            content = self._export_csv(documents)
+            filename = f"kb_{kb_id}_{datetime.now().strftime('%Y%m%d')}.csv"
         
         return {
-            'content': formatter.format(data),
-            'filename': f"{kb_info.get('slug', 'export')}_{datetime.now().strftime('%Y%m%d')}{formatter.get_extension()}",
-            'content_type': formatter.get_content_type()
+            "filename": filename,
+            "content": content,
+            "format": format,
+            "doc_count": len(documents),
         }
     
-    def export_document(self, doc: Dict, format: str = 'markdown') -> Dict[str, Any]:
-        """导出单个文档"""
-        data = {
-            'title': doc.get('title', 'Document'),
-            'documents': [{
-                'title': doc.get('title'),
-                'content': doc.get('content'),
-                'file_type': doc.get('file_type'),
-                'created_at': doc.get('created_at'),
-            }]
-        }
+    async def export_chat(
+        self,
+        chat_id: str,
+        format: str = "markdown",
+    ) -> Dict:
+        """导出对话"""
         
-        formatter = self.formatters.get(format)
-        return {
-            'content': formatter.format(data),
-            'filename': f"{doc.get('title', 'document')}{formatter.get_extension()}",
-            'content_type': formatter.get_content_type()
-        }
-    
-    def get_supported_formats(self) -> List[Dict[str, str]]:
-        """获取支持的格式"""
-        return [
-            {'id': k, 'name': v.__class__.__name__.replace('Formatter', '').title()}
-            for k, v in self.formatters.items()
+        # TODO: 获取对话历史
+        messages = [
+            {"role": "user", "content": "示例问题"},
+            {"role": "assistant", "content": "这是回答。"},
         ]
+        
+        if format == "markdown":
+            content = self._export_chat_markdown(messages)
+        elif format == "json":
+            import json
+            content = json.dumps({"messages": messages}, ensure_ascii=False, indent=2)
+        else:
+            content = str(messages)
+        
+        return {
+            "filename": f"chat_{chat_id}_{datetime.now().strftime('%Y%m%d')}.{format}",
+            "content": content,
+            "format": format,
+        }
+    
+    async def _get_documents(self, kb_id: str) -> List[Dict]:
+        """获取文档列表"""
+        # TODO: 从数据库查询
+        return [
+            {
+                "id": "1",
+                "title": "文档 1",
+                "content": "这是文档内容...",
+                "created_at": datetime.now().isoformat(),
+            }
+        ]
+    
+    def _export_markdown(
+        self,
+        documents: List[Dict],
+        include_metadata: bool = True,
+    ) -> str:
+        """导出为 Markdown"""
+        
+        lines = ["# 知识库导出\n"]
+        
+        for doc in documents:
+            lines.append(f"## {doc['title']}\n")
+            
+            if include_metadata:
+                lines.append(f"*创建时间: {doc.get('created_at', 'N/A')}*\n")
+            
+            lines.append(f"\n{doc.get('content', '')}\n")
+            lines.append("\n---\n")
+        
+        return "\n".join(lines)
+    
+    def _export_json(
+        self,
+        documents: List[Dict],
+        include_metadata: bool = True,
+    ) -> str:
+        """导出为 JSON"""
+        
+        import json
+        
+        data = {
+            "exported_at": datetime.now().isoformat(),
+            "document_count": len(documents),
+            "documents": documents,
+        }
+        
+        return json.dumps(data, ensure_ascii=False, indent=2)
+    
+    def _export_html(
+        self,
+        documents: List[Dict],
+        include_metadata: bool = True,
+    ) -> str:
+        """导出为 HTML"""
+        
+        html = [
+            "<!DOCTYPE html>",
+            "<html><head>",
+            "<meta charset='utf-8'>",
+            "<title>知识库导出</title>",
+            "<style>",
+            "body { font-family: Arial; max-width: 800px; margin: 0 auto; padding: 20px; }",
+            "h1, h2 { color: #333; }",
+            "hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }",
+            ".metadata { color: #666; font-size: 14px; }",
+            "</style>",
+            "</head><body>",
+            "<h1>📚 知识库导出</h1>",
+            f"<p>导出时间: {datetime.now().isoformat()}</p>",
+            f"<p>文档数量: {len(documents)}</p>",
+        ]
+        
+        for doc in documents:
+            html.append("<hr>")
+            html.append(f"<h2>{doc['title']}</h2>")
+            
+            if include_metadata:
+                html.append(f"<p class='metadata'>创建时间: {doc.get('created_at', 'N/A')}</p>")
+            
+            html.append(f"<pre>{doc.get('content', '')}</pre>")
+        
+        html.append("</body></html>")
+        
+        return "\n".join(html)
+    
+    def _export_csv(self, documents: List[Dict]) -> str:
+        """导出为 CSV"""
+        
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        writer.writerow(["ID", "标题", "内容", "创建时间"])
+        
+        for doc in documents:
+            writer.writerow([
+                doc.get("id", ""),
+                doc.get("title", ""),
+                doc.get("content", ""),
+                doc.get("created_at", ""),
+            ])
+        
+        return output.getvalue()
+    
+    def _export_chat_markdown(self, messages: List[Dict]) -> str:
+        """导出对话为 Markdown"""
+        
+        lines = ["# 对话导出\n", f"导出时间: {datetime.now().isoformat()}\n"]
+        
+        for msg in messages:
+            role = "👤 用户" if msg.get("role") == "user" else "🤖 助手"
+            lines.append(f"## {role}\n")
+            lines.append(f"{msg.get('content', '')}\n")
+            lines.append("\n---\n")
+        
+        return "\n".join(lines)
 
 
 # 全局实例

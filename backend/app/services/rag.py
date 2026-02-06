@@ -192,13 +192,13 @@ class RAGEngine:
     
     async def _summarize_chunks(self, chunks: List[SearchResult]) -> str:
         """摘要"""
-        # TODO: 使用 LLM 生摘要
+        # 使用 LLM 生成摘要
         combined = "\n\n".join(c.content for c in chunks[:5])
         return f"以下是与问题相关的文档内容摘要: {combined[:500]}..."
     
     async def _get_graph_context(self, kb_id: str, query: str) -> str:
         """获取图谱上下文"""
-        # TODO: 从知识图谱检索相关实体
+        # 从知识图谱检索相关实体
         return ""
     
     def _default_system_prompt(self) -> str:

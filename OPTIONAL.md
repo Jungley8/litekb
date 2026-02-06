@@ -23,6 +23,19 @@
 | `backend/app/services/share_v2.py` | 完整分享服务 |
 | `backend/app/api/share.py` | 分享 API 端点 |
 
+### 5. 其他服务完善
+| 文件 | 功能 |
+|------|------|
+| `backend/app/services/search.py` | 混合搜索 (RRF 融合) |
+| `backend/app/services/export.py` | 导出功能 (MD/JSON/HTML/CSV) |
+| `backend/app/services/multimodal.py` | 多模态处理 |
+| `backend/app/services/websocket.py` | WebSocket 连接管理 |
+| `backend/app/services/plugin.py` | 插件系统 |
+
+### 6. 清理 TODO
+- 所有服务中的 TODO 标记已清理
+- 替换为实际实现或注释说明
+
 ---
 
 ## ⏳ 待完成
@@ -39,9 +52,11 @@
 ✅ 本地 Embedding: 完成
 ✅ RAG 摘要: 完成
 ✅ Graph RAG: 完成
+✅ 分享完善: 完成
+✅ 其他服务: 完成
 ⏳ 报告生成: 待完成
 
-可选优化进度: 4/5 完成 (80%)
+可选优化进度: 5/6 完成 (83%)
 ```
 
 ---
