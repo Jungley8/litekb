@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -8,6 +8,7 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 import uuid
 from contextlib import asynccontextmanager
+import os
 
 # ==================== 配置 ====================
 
@@ -19,7 +20,16 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 async def lifespan(app: FastAPI):
     # 启动时初始化
     from app.db import init_db
+    from app.services.vector import vector_store
+    
     init_db()
+    
+    # 初始化向量库集合
+    try:
+        vector_store.create_collection()
+    except Exception as e:
+        print(f"向量库初始化: {e}")
+    
     yield
     # 关闭时清理
     pass
@@ -64,7 +74,6 @@ class User(BaseModel):
 class DocumentCreate(BaseModel):
     title: str
     content: Optional[str] = None
-    file_path: Optional[str] = None
     metadata: Optional[dict] = None
 
 class Document(BaseModel):
@@ -93,11 +102,27 @@ class ChatRequest(BaseModel):
     kb_id: str
     message: str
     history: Optional[List[ChatMessage]] = []
+    mode: str = "naive"
+
+class ChatResponse(BaseModel):
+    answer: str
+    sources: List[dict]
+    conversation_id: str
+
+class SearchRequest(BaseModel):
+    query: str
+    strategy: str = "hybrid"
+    top_k: int = 10
+    filters: Optional[dict] = None
+
+class SearchResult(BaseModel):
+    id: str
+    title: str
+    content: str
+    score: float
+    type: str
 
 # ==================== 模拟数据库 ====================
-
-# 简单起见，使用内存数据库演示
-# 生产环境请使用 SQLite/PostgreSQL
 
 users_db = {}
 kb_db = {}
@@ -159,7 +184,6 @@ async def root():
 
 @app.post("/api/v1/auth/register", response_model=User)
 async def register(user: UserCreate):
-    # 检查是否已存在
     for u in users_db.values():
         if u["username"] == user.username:
             raise HTTPException(status_code=400, detail="Username already registered")
@@ -167,7 +191,6 @@ async def register(user: UserCreate):
 
 @app.post("/api/v1/auth/login", response_model=Token)
 async def login(user: UserLogin):
-    # 查找用户
     found = None
     for u in users_db.values():
         if u["username"] == user.username:
@@ -212,10 +235,31 @@ async def get_kb(kb_id: str, current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     return KnowledgeBase(**kb_db[kb_id])
 
+@app.put("/api/v1/kb/{kb_id}")
+async def update_kb(
+    kb_id: str,
+    data: KnowledgeBaseCreate,
+    current_user: User = Depends(get_current_user)
+):
+    if kb_id not in kb_db:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    kb_db[kb_id].update({
+        "name": data.name,
+        "description": data.description
+    })
+    return kb_db[kb_id]
+
+@app.delete("/api/v1/kb/{kb_id}")
+async def delete_kb(kb_id: str, current_user: User = Depends(get_current_user)):
+    if kb_id not in kb_db:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    del kb_db[kb_id]
+    return {"message": "deleted"}
+
 # ==================== 文档 API ====================
 
 @app.post("/api/v1/kb/{kb_id}/docs", response_model=Document)
-async def add_document(
+async def create_doc(
     kb_id: str,
     doc: DocumentCreate,
     current_user: User = Depends(get_current_user)
@@ -229,66 +273,213 @@ async def add_document(
         "kb_id": kb_id,
         "title": doc.title,
         "content": doc.content,
-        "status": "pending",
+        "status": "indexed",
         "created_at": datetime.utcnow()
     }
     
-    # 更新 KB 文档计数
     kb_db[kb_id]["doc_count"] += 1
     
     return Document(**doc_db[doc_id])
 
+@app.post("/api/v1/kb/{kb_id}/docs/upload")
+async def upload_document(
+    kb_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """上传文档文件"""
+    if kb_id not in kb_db:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    
+    # 读取文件内容
+    content = await file.read()
+    filename = file.filename or "document"
+    
+    # 处理文档
+    from app.services.document import document_service
+    doc = await document_service.create_document(
+        kb_id=kb_id,
+        title=filename,
+        content=content,
+        filename=filename
+    )
+    
+    return {
+        "id": doc.id,
+        "title": doc.title,
+        "status": doc.status,
+        "message": "文档上传成功"
+    }
+
 @app.get("/api/v1/kb/{kb_id}/docs", response_model=List[Document])
 async def list_documents(
     kb_id: str,
+    skip: int = 0,
+    limit: int = 100,
     current_user: User = Depends(get_current_user)
 ):
     if kb_id not in kb_db:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
     docs = [Document(**d) for d in doc_db.values() if d.get("kb_id") == kb_id]
-    return docs
+    return docs[skip:skip+limit]
+
+@app.delete("/api/v1/kb/{kb_id}/docs/{doc_id}")
+async def delete_document(
+    kb_id: str,
+    doc_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    if doc_id not in doc_db:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    del doc_db[doc_id]
+    if kb_id in kb_db:
+        kb_db[kb_id]["doc_count"] = max(0, kb_db[kb_id]["doc_count"] - 1)
+    
+    return {"message": "deleted"}
 
 # ==================== 搜索 API ====================
 
 @app.post("/api/v1/kb/{kb_id}/search")
 async def search_kb(
     kb_id: str,
-    query: str,
-    strategy: str = "hybrid",
-    top_k: int = 10,
+    request: SearchRequest,
     current_user: User = Depends(get_current_user)
 ):
+    """混合检索"""
     if kb_id not in kb_db:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
-    # 模拟搜索结果
-    results = [
-        {"id": "1", "title": "示例文档 1", "content": f"这是与 '{query}' 相关的搜索结果...", "score": 0.95},
-        {"id": "2", "title": "示例文档 2", "content": f"另一个相关结果...", "score": 0.87},
-    ]
-    return {"results": results, "strategy": strategy}
+    from app.services.search import hybrid_search
+    
+    results = await hybrid_search.search(
+        query=request.query,
+        kb_id=kb_id,
+        strategy=request.strategy,
+        top_k=request.top_k,
+        filters=request.filters
+    )
+    
+    return {
+        "results": [
+            {
+                "id": r.id,
+                "title": r.metadata.get("source", "Unknown"),
+                "content": r.content[:500],
+                "score": r.score,
+                "type": r.source_type
+            }
+            for r in results
+        ],
+        "strategy": request.strategy
+    }
 
 # ==================== RAG 对话 API ====================
 
-@app.post("/api/v1/kb/{kb_id}/chat")
+@app.post("/api/v1/kb/{kb_id}/chat", response_model=ChatResponse)
 async def chat_with_kb(
     kb_id: str,
     chat: ChatRequest,
     current_user: User = Depends(get_current_user)
 ):
+    """RAG 对话"""
     if kb_id not in kb_db:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
-    # 模拟 RAG 回答
-    response = {
-        "answer": f"基于知识库内容，关于「{chat.message}」的回答是：这是一个示例回答。在实际实现中，会调用 LLM 并检索相关文档。",
-        "sources": [
-            {"doc_id": "1", "title": "示例文档 1", "chunk": "相关段落内容..."}
-        ],
-        "conversation_id": str(uuid.uuid4())
+    from app.services.rag import rag_engine
+    
+    history = [{"role": m.role, "content": m.content} for m in (chat.history or [])]
+    
+    response = await rag_engine.query(
+        kb_id=kb_id,
+        question=chat.message,
+        mode=chat.mode,
+        history=history
+    )
+    
+    return ChatResponse(
+        answer=response.answer,
+        sources=response.sources,
+        conversation_id=response.conversation_id
+    )
+
+@app.post("/api/v1/kb/{kb_id}/chat/stream")
+async def stream_chat(
+    kb_id: str,
+    chat: ChatRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """流式 RAG 对话 (SSE)"""
+    # TODO: 实现 SSE 流式响应
+    return await chat_with_kb(kb_id, chat, current_user)
+
+# ==================== 知识图谱 API ====================
+
+@app.get("/api/v1/kb/{kb_id}/graph")
+async def get_graph(kb_id: str, current_user: User = Depends(get_current_user)):
+    """获取知识图谱"""
+    if kb_id not in kb_db:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    
+    from app.services.graph import graph_service
+    
+    return graph_service.get_graph(kb_id)
+
+@app.post("/api/v1/kb/{kb_id}/graph/build")
+async def build_graph(
+    kb_id: str,
+    rebuild: bool = False,
+    current_user: User = Depends(get_current_user)
+):
+    """构建/重建知识图谱"""
+    if kb_id not in kb_db:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    
+    from app.services.graph import graph_service
+    
+    # 获取知识库所有文档
+    docs = [d for d in doc_db.values() if d.get("kb_id") == kb_id and d.get("content")]
+    
+    stats = {"entities": 0, "relations": 0}
+    for doc in docs:
+        result = await graph_service.build_graph(
+            kb_id=kb_id,
+            doc_id=doc["id"],
+            text=doc["content"][:5000]  # 限制长度
+        )
+        stats["entities"] += result["entities"]
+        stats["relations"] += result["relations"]
+    
+    return {
+        "message": "图谱构建完成",
+        **stats
     }
-    return response
+
+@app.get("/api/v1/kb/{kb_id}/graph/search")
+async def search_graph(
+    kb_id: str,
+    q: str,
+    current_user: User = Depends(get_current_user)
+):
+    """搜索图谱实体"""
+    if kb_id not in kb_db:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    
+    from app.services.graph import graph_service
+    
+    return graph_service.search_entities(kb_id, q)
+
+@app.get("/api/v1/kb/{kb_id}/graph/entity/{entity_id}")
+async def get_entity(
+    kb_id: str,
+    entity_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """获取实体详情"""
+    from app.services.graph import graph_service
+    
+    return graph_service.get_entity_relations(kb_id, entity_id)
 
 # ==================== 启动 ====================
 
