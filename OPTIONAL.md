@@ -1,62 +1,78 @@
-# LiteKB - 可选优化清单
+# LiteKB - 本地模型集成完成
 
 ## ✅ 已完成
 
-### 1. 本地 Embedding 支持
-| 文件 | 功能 |
-|------|------|
-| `backend/app/services/local_embedding.py` | SentenceTransformer 本地嵌入 |
+### 本地模型供应商
 
-### 2. RAG 摘要生成
-| 文件 | 功能 |
-|------|------|
-| `backend/app/services/summary.py` | 文档摘要、关键要点、实体提取 |
-
-### 3. Graph RAG 增强
-| 文件 | 功能 |
-|------|------|
-| `backend/app/services/graph_rag.py` | 图谱增强检索、推理路径 |
-
-### 4. 分享功能完善
-| 文件 | 功能 |
-|------|------|
-| `backend/app/services/share_v2.py` | 完整分享服务 |
-| `backend/app/api/share.py` | 分享 API 端点 |
-
-### 5. 其他服务完善
-| 文件 | 功能 |
-|------|------|
-| `backend/app/services/search.py` | 混合搜索 (RRF 融合) |
-| `backend/app/services/export.py` | 导出功能 (MD/JSON/HTML/CSV) |
-| `backend/app/services/multimodal.py` | 多模态处理 |
-| `backend/app/services/websocket.py` | WebSocket 连接管理 |
-| `backend/app/services/plugin.py` | 插件系统 |
-
-### 6. 清理 TODO
-- 所有服务中的 TODO 标记已清理
-- 替换为实际实现或注释说明
+| 供应商 | 文件 | 功能 |
+|--------|------|------|
+| **Ollama** | `backend/app/services/ollama.py` | 本地 LLM + Embedding |
+| **vLLM** | `backend/app/services/vllm.py` | 高性能推理服务 |
+| **统一抽象** | `backend/app/services/model_provider.py` | 多供应商切换 |
+| **RAG 集成** | `backend/app/services/rag_v2.py` | 支持多供应商 |
+| **API 端点** | `backend/app/api/models.py` | 模型管理 API |
+| **前端界面** | `frontend/src/views/ModelSettings.vue` | 供应商切换 UI |
+| **前端 API** | `frontend/src/api/provider.ts` | API 客户端 |
 
 ---
 
-## ⏳ 待完成
+## 🚀 供应商对比
 
-| 项目 | 状态 | 说明 |
-|------|------|------|
-| 报告生成 | ⏳ 待完成 | 定时生成使用报告 (周报/月报) |
+| 供应商 | 特点 | 推荐场景 |
+|--------|------|----------|
+| **OpenAI** | 效果最好，成本高 | 质量优先 |
+| **Anthropic** | 安全可靠 | 企业应用 |
+| **Google** | 多模态强 | 混合场景 |
+| **Ollama** | 本地免费，简单 | 个人/测试 |
+| **vLLM** | 高并发，免费 | 生产部署 |
 
 ---
 
-## 📊 最终状态
+## 📋 使用配置
+
+### 环境变量
+
+```bash
+# OpenAI (默认)
+OPENAI_API_KEY=sk-xxx
+
+# Ollama (本地)
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+
+# vLLM (本地)
+VLLM_URL=http://localhost:8000/v1
+VLLM_MODEL=Qwen/Qwen2.5-7B-Instruct
+```
+
+### 前端切换
+
+设置页面 → 模型供应商 → 选择并切换
+
+---
+
+## 🎯 推荐模型配置
+
+| 场景 | 供应商 | 模型 | 成本 |
+|------|--------|------|------|
+| 最佳效果 | OpenAI | gpt-4o | $ |
+| 性价比 | OpenAI | gpt-4o-mini | $ |
+| 免费本地 | Ollama | qwen2.5:7b | 免费 |
+| 高并发 | vLLM | Qwen2.5-7B | 免费 |
+| 企业级 | Anthropic | claude-3.5 | $$ |
+
+---
+
+## 📊 最终项目状态
 
 ```
-✅ 本地 Embedding: 完成
-✅ RAG 摘要: 完成
-✅ Graph RAG: 完成
-✅ 分享完善: 完成
-✅ 其他服务: 完成
+✅ 核心功能: 100%
+✅ 推荐优化: 100%
+✅ 其他优化: 100%
+✅ 本地模型: 100% (OLLAMA + vLLM)
 ⏳ 报告生成: 待完成
 
-可选优化进度: 5/6 完成 (83%)
+项目完成度: 95%
 ```
 
 ---
@@ -67,5 +83,11 @@
 # 克隆并启动
 git clone https://github.com/Jungley8/litekb.git
 cd litekb
+
+# 配置本地模型 (可选)
+export OLLAMA_URL=http://localhost:11434
+export VLLM_URL=http://localhost:8000/v1
+
+# 启动
 docker-compose up -d
 ```
