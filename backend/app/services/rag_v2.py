@@ -1,5 +1,5 @@
 """
-RAG 引擎 - 支持多供应商切换
+RAG 引擎 - 支持多供应商切换 + Langfuse 提示词
 """
 from typing import List, Dict, Optional, AsyncGenerator
 from datetime import datetime
@@ -15,6 +15,7 @@ from app.services.model_provider import (
     ProviderType,
     ModelConfig,
 )
+from app.services.prompt import rag_prompt
 
 
 @dataclass
@@ -125,17 +126,23 @@ class RAGEngine:
         context: str,
         history: List[Dict] = None,
     ) -> List[Dict]:
-        """构建消息"""
+        """构建消息 - 使用 Langfuse 提示词"""
         
-        system_prompt = f"""你是知识库助手。基于以下上下文回答问题。
-
-要求：
-1. 只基于上下文回答，不要编造
-2. 如果上下文没有相关信息，请说明
-3. 标注信息来源 (如 [1])
-
-上下文:
-{context}"""
+        # 获取历史文本
+        history_text = ""
+        if history:
+            for h in history[-5:]:  # 只取最近5轮
+                role = h.get("role", "user")
+                content = h.get("content", "")
+                history_text += f"{role}: {content}\n"
+        
+        # 使用 Langfuse 提示词
+        system_prompt = rag_prompt(
+            mode=self.config.mode,
+            question=message,
+            context=context,
+            history=history_text,
+        )
         
         messages = [{"role": "system", "content": system_prompt}]
         

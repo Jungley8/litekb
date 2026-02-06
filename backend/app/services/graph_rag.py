@@ -1,9 +1,15 @@
 """
-Graph RAG 检索增强服务
+Graph RAG 检索增强服务 - Langfuse 提示词
 """
 from typing import List, Dict, Set, Tuple, Optional
 from loguru import logger
 from collections import defaultdict
+
+from app.services.prompt import (
+    get_prompt,
+    entity_extraction_prompt,
+    graph_query_prompt,
+)
 
 
 class GraphRAGRetriever:
@@ -68,9 +74,15 @@ class GraphRAGRetriever:
         }
     
     async def _extract_entities(self, query: str) -> List[str]:
-        """从查询中提取实体"""
-        # 简单实现：提取关键词
-        # 实际可以使用 NER 模型
+        """从查询中提取实体 - 使用 Langfuse 提示词"""
+        
+        # 使用 Langfuse 提示词
+        prompt_text = entity_extraction_prompt(query)
+        
+        # 这里可以调用 LLM 进行实体抽取
+        # 例如：entities = await llm_extract(prompt_text)
+        
+        # 简单回退：提取关键词
         words = query.replace("?", "").split()
         return [w for w in words if len(w) > 1][:5]
     

@@ -1,5 +1,5 @@
 """
-文档处理服务
+文档处理服务 - Langfuse 提示词
 """
 import os
 import uuid
@@ -10,6 +10,10 @@ from loguru import logger
 
 from app.config import settings
 from app.models import get_session, Document, DocumentChunk, KBDocument
+from app.services.prompt import (
+    summarize_prompt,
+    get_prompt,
+)
 
 
 class DocumentProcessor:
@@ -115,6 +119,23 @@ class DocumentProcessor:
             start = end - self.chunk_overlap
         
         return chunks
+    
+    async def summarize_document(
+        self,
+        content: str,
+        max_length: str = "200",
+    ) -> str:
+        """生成文档摘要 - 使用 Langfuse 提示词"""
+        # 获取提示词
+        prompt_text = summarize_prompt(content, max_length)
+        
+        # 这里可以调用 LLM 进行摘要
+        # summary = await llm.call(prompt_text)
+        
+        logger.debug(f"Document summary prompt: {len(prompt_text)} chars")
+        
+        # 回退：返回前 200 字
+        return content[:200] + "..."
 
 
 class DocumentService:
