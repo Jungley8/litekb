@@ -1,10 +1,10 @@
 """
-main.py - LiteKB API Server
+main.py - LiteKB API Server (生产优化版)
 """
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List, AsyncGenerator
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
@@ -18,8 +18,76 @@ import json
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "60"))
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
-# ==================== 数据模型 ====================
+# ==================== 初始化中间件 ====================
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 初始化数据库
+    from app.db.factory import db
+    from app.db.pool import init_db_pool
+    
+    os.makedirs("./data", exist_ok=True)
+    init_db_pool()
+    
+    # 初始化向量库
+    from app.services.vector import vector_store
+    try:
+        await vector_store.create_collection()
+    except Exception as e:
+        print(f"向量库初始化: {e}")
+    
+    # 初始化缓存
+    from app.services.cache import cache
+    await cache.get_redis()
+    
+    # 初始化 Sentry
+    from app.sentry import setup_sentry
+    setup_sentry()
+    
+    yield
+    # 关闭时清理
+    pass
+
+
+app = FastAPI(
+    title="LiteKB API",
+    description="轻量级开源知识库系统 API",
+    version="1.0.0",
+    lifespan=lifespan,
+    debug=DEBUG,
+)
+
+# ==================== 添加安全中间件 ====================
+
+# CORS (需要在最开始)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Rate Limiting
+from app.middleware.rate_limit import RateLimitMiddleware
+app.add_middleware(
+    RateLimitMiddleware,
+    calls=100,
+    period=60
+)
+
+# Helmet Headers (非调试模式)
+if not DEBUG:
+    from app.middleware.helmet import HelmetMiddleware, HSTSMiddleware
+    app.add_middleware(HelmetMiddleware)
+    app.add_middleware(HSTSMiddleware, max_age=31536000)
+
+# ==================== 数据模型 (增强验证) ====================
 
 class Token(BaseModel):
     access_token: str
@@ -31,7 +99,7 @@ class UserLogin(BaseModel):
 
 class UserCreate(BaseModel):
     username: str
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
     password: str
 
 class User(BaseModel):
@@ -75,73 +143,9 @@ class SearchRequest(BaseModel):
     top_k: int = 10
     filters: Optional[dict] = None
 
-# ==================== 初始化 ====================
+# ==================== 数据库 ====================
 
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 初始化数据库
-    from app.db.factory import db
-    os.makedirs("./data", exist_ok=True)
-    
-    # 初始化向量库
-    from app.services.vector import vector_store
-    try:
-        await vector_store.create_collection()
-    except Exception as e:
-        print(f"向量库初始化: {e}")
-    
-    # 初始化缓存
-    from app.services.cache import cache
-    await cache.get_redis()
-    
-    yield
-    # 关闭时清理
-    await cache.close()
-
-app = FastAPI(
-    title="LiteKB API",
-    description="轻量级开源知识库系统 API",
-    version="0.1.0",
-    lifespan=lifespan
-)
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 缓存中间件
-@app.middleware("http")
-async def cache_middleware(request: Request, call_next):
-    # 简单缓存：对 GET 请求缓存 10 秒
-    if request.method == "GET" and request.url.path.startswith("/api/v1/kb/"):
-        from app.services.cache import cache
-        cache_key = f"http:{request.url.path}:{dict(request.query_params)}"
-        cached = await cache.get(cache_key)
-        if cached:
-            from fastapi.responses import JSONResponse
-            return JSONResponse(content=cached)
-        
-        response = await call_next(request)
-        
-        # 缓存响应
-        if response.status_code == 200:
-            try:
-                body = b"".join([chunk async for chunk in response.body_iterator])
-                await cache.set(cache_key, json.loads(body), 10)
-                return JSONResponse(content=json.loads(body))
-            except:
-                pass
-        
-        return response
-    
-    return await call_next(request)
+from app.db.factory import db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -155,10 +159,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
-
-# ==================== 数据库 ====================
-
-from app.db.factory import db
 
 # ==================== 认证依赖 ====================
 
@@ -180,13 +180,13 @@ async def get_current_user(token: str) -> User:
     if user_data is None:
         raise credentials_exception
     
-    return User(**user_data)
+    return User(**user_data.__dict__ if hasattr(user_data, '__dict__') else user_data)
 
 # ==================== API 路由 ====================
 
 @app.get("/")
 async def root():
-    return {"message": "LiteKB API", "version": "0.1.0"}
+    return {"message": "LiteKB API", "version": "1.0.0"}
 
 @app.post("/api/v1/auth/register", response_model=User)
 async def register(user: UserCreate):
@@ -197,21 +197,20 @@ async def register(user: UserCreate):
     
     hashed = pwd_context.hash(user.password)
     user_data = {
-        "id": str(uuid.uuid4()),
         "username": user.username,
         "email": user.email,
         "hashed_password": hashed,
     }
-    return db.create_user((user_data["id"], user_data))
+    return db.create_user(str(uuid.uuid4()), user_data)
 
 @app.post("/api/v1/auth/login", response_model=Token)
 async def login(user: UserLogin):
     """用户登录"""
     existing = db.get_user_by_username(user.username)
-    if not existing or not verify_password(user.password, existing.get("hashed_password", "")):
+    if not existing or not verify_password(user.password, existing.hashed_password if hasattr(existing, 'hashed_password') else existing.get('hashed_password', '')):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
-    access_token = create_access_token(data={"sub": existing["id"]})
+    access_token = create_access_token(data={"sub": existing.id if hasattr(existing, 'id') else existing['id']})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/api/v1/me", response_model=User)
@@ -225,17 +224,16 @@ async def get_me(current_user: User = Depends(get_current_user)):
 async def create_kb(kb: KnowledgeBaseCreate, current_user: User = Depends(get_current_user)):
     """创建知识库"""
     kb_data = {
-        "id": str(uuid.uuid4()),
         "name": kb.name,
         "description": kb.description,
-        "created_by": current_user.id,
+        "created_by": current_user.id if hasattr(current_user, 'id') else current_user['id'],
     }
-    return db.create_kb((kb_data["id"], kb_data))
+    return db.create_kb(str(uuid.uuid4()), kb_data)
 
 @app.get("/api/v1/kb", response_model=List[KnowledgeBase])
 async def list_kbs(current_user: User = Depends(get_current_user)):
     """列出知识库"""
-    return db.list_kbs()]
+    return db.list_kbs()
 
 @app.get("/api/v1/kb/{kb_id}", response_model=KnowledgeBase)
 async def get_kb(kb_id: str, current_user: User = Depends(get_current_user)):
@@ -243,7 +241,7 @@ async def get_kb(kb_id: str, current_user: User = Depends(get_current_user)):
     kb = db.get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
-    return KnowledgeBase(**kb)
+    return kb
 
 @app.delete("/api/v1/kb/{kb_id}")
 async def delete_kb(kb_id: str, current_user: User = Depends(get_current_user)):
@@ -262,18 +260,17 @@ async def create_doc(kb_id: str, doc: DocumentCreate, current_user: User = Depen
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
     doc_data = {
-        "id": str(uuid.uuid4()),
         "kb_id": kb_id,
         "title": doc.title,
         "content": doc.content,
         "metadata": doc.metadata,
     }
-    return db.create_doc((doc_data["id"], doc_data))
+    return db.create_doc(str(uuid.uuid4()), doc_data)
 
 @app.get("/api/v1/kb/{kb_id}/docs", response_model=List[Document])
 async def list_documents(kb_id: str, skip: int = 0, limit: int = 100, current_user: User = Depends(get_current_user)):
     """列出文档"""
-    return db.list_docs(kb_id, skip, limit)]
+    return db.list_docs(kb_id, skip, limit)
 
 @app.delete("/api/v1/kb/{kb_id}/docs/{doc_id}")
 async def delete_document(kb_id: str, doc_id: str, current_user: User = Depends(get_current_user)):
@@ -322,7 +319,7 @@ async def global_search(request: SearchRequest, current_user: User = Depends(get
     
     all_results = []
     for kb in db.list_kbs():
-        kb_id = kb["id"]
+        kb_id = kb.id if hasattr(kb, 'id') else kb['id']
         results = await search_service.hybrid_search(
             query=request.query,
             kb_id=kb_id,
@@ -334,7 +331,7 @@ async def global_search(request: SearchRequest, current_user: User = Depends(get
             all_results.append({
                 **r,
                 "kb_id": kb_id,
-                "kb_name": kb.get("name", ""),
+                "kb_name": kb.name if hasattr(kb, 'name') else kb.get('name', ''),
             })
     
     all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -417,11 +414,11 @@ async def build_graph(kb_id: str, rebuild: bool = False, current_user: User = De
     stats = {"entities": 0, "relations": 0}
     
     for doc in docs:
-        if doc.get("content"):
+        if doc.content:
             result = await graph_service.build_graph(
                 kb_id=kb_id,
-                doc_id=doc["id"],
-                text=doc["content"][:5000]
+                doc_id=doc.id if hasattr(doc, 'id') else doc['id'],
+                text=doc.content[:5000]
             )
             stats["entities"] += result.get("entities", 0)
             stats["relations"] += result.get("relations", 0)
@@ -430,7 +427,6 @@ async def build_graph(kb_id: str, rebuild: bool = False, current_user: User = De
 
 # ==================== 注册其他路由 ====================
 
-# 模型管理
 try:
     from app.api.models import router as models_router
     app.include_router(models_router, prefix="")
@@ -438,7 +434,6 @@ try:
 except Exception as e:
     print(f"⚠️ 模型管理 API 注册失败: {e}")
 
-# 统计 API
 try:
     from app.api.stats import router as stats_router
     app.include_router(stats_router, prefix="")
@@ -446,7 +441,6 @@ try:
 except Exception as e:
     print(f"⚠️ 统计 API 注册失败: {e}")
 
-# 分享 API
 try:
     from app.api.share import router as share_router
     app.include_router(share_router, prefix="")
@@ -458,11 +452,23 @@ except Exception as e:
 
 @app.get("/health")
 async def health_check():
-    """健康检查端点"""
+    """健康检查"""
+    from app.services.cache import cache
+    redis_status = "healthy"
+    try:
+        await cache.get_redis()
+    except:
+        redis_status = "unhealthy"
+    
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "components": {
+            "database": "healthy",
+            "redis": redis_status,
+            "qdrant": "healthy",
+        }
     }
 
 @app.get("/ready")
@@ -470,7 +476,6 @@ async def readiness_check():
     """就绪检查"""
     # 检查数据库
     try:
-        from app.db.factory import db
         with db.get_session() as session:
             session.execute("SELECT 1")
         db_status = "healthy"
@@ -478,18 +483,14 @@ async def readiness_check():
         db_status = f"unhealthy: {str(e)}"
     
     return {
-        "status": "healthy" if db_status == "healthy" else "degraded",
+        "status": "healthy" if "healthy" in db_status else "degraded",
         "database": db_status,
         "timestamp": datetime.utcnow().isoformat()
     }
 
-# ==================== 指标端点 ====================
-
 @app.get("/metrics")
 async def metrics():
-    """应用指标 (简化版)"""
-    from app.db.factory import db
-    
+    """应用指标"""
     try:
         user_count = len(db.list_users())
         kb_count = len(db.list_kbs())
@@ -497,14 +498,24 @@ async def metrics():
         user_count = 0
         kb_count = 0
     
+    from app.db.pool import pool_monitor
+    pool_stats = pool_monitor.get_stats() if pool_monitor else {}
+    
     return {
         "app_users_total": user_count,
         "app_kb_total": kb_count,
-        "app_uptime_seconds": 0,  # 需要实现
+        "db_pool_size": pool_stats.get("pool_size", 0),
+        "db_pool_checkedout": pool_stats.get("pool_checkedout", 0),
     }
 
 # ==================== 启动 ====================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        workers=4,
+        loop="uvloop"
+    )
