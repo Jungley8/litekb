@@ -1,72 +1,63 @@
 <template>
-  <div class="dashboard">
-    <n-grid :cols="4" :x-gap="16" :y-gap="16">
-      <!-- 统计卡片 -->
-      <n-gi :span="1">
-        <n-card>
-          <n-statistic label="知识库数量">
+  <div class="home-view">
+    <!-- 欢迎卡片 -->
+    <n-card class="welcome-card">
+      <div class="welcome-content">
+        <h1>👋 欢迎使用 LiteKB</h1>
+        <p>您的智能知识库助手</p>
+        <n-space>
+          <n-button type="primary" @click="$router.push('/kbs')">
+            <template #icon><n-icon><AddOutline /></n-icon></template>
+            创建知识库
+          </n-button>
+          <n-button @click="$router.push('/chat')">
+            <template #icon><n-icon><ChatbubblesOutline /></n-icon></template>
+            开始对话
+          </n-button>
+        </n-space>
+      </div>
+    </n-card>
+
+    <!-- 统计卡片 -->
+    <n-grid :cols="xs ? 2 : 4" :x-gap="16" :y-gap="16">
+      <n-gi v-for="stat in stats" :key="stat.label">
+        <n-card class="stat-card" hoverable @click="goTo(stat.route)">
+          <n-statistic :label="stat.label">
             <template #prefix>
-              <n-icon color="#18a058"><FolderOutline /></n-icon>
+              <n-icon :color="stat.color">
+                <component :is="stat.icon" />
+              </n-icon>
             </template>
-            {{ stats.kbCount }}
-          </n-statistic>
-        </n-card>
-      </n-gi>
-      
-      <n-gi :span="1">
-        <n-card>
-          <n-statistic label="文档总数">
-            <template #prefix>
-              <n-icon color="#2080f0"><DocumentTextOutline /></n-icon>
-            </template>
-            {{ stats.docCount }}
-          </n-statistic>
-        </n-card>
-      </n-gi>
-      
-      <n-gi :span="1">
-        <n-card>
-          <n-statistic label="对话次数">
-            <template #prefix>
-              <n-icon color="#f0a020"><ChatbubblesOutline /></n-icon>
-            </template>
-            {{ stats.chatCount }}
-          </n-statistic>
-        </n-card>
-      </n-gi>
-      
-      <n-gi :span="1">
-        <n-card>
-          <n-statistic label="实体数量">
-            <template #prefix>
-              <n-icon color="#d03050"><NodesOutline /></n-icon>
-            </template>
-            {{ stats.entityCount }}
+            {{ stat.value }}
           </n-statistic>
         </n-card>
       </n-gi>
     </n-grid>
 
     <!-- 快捷操作 -->
-    <n-card title="快捷操作" class="mt-16">
+    <n-card title="⚡ 快捷操作" style="margin-top: 16px">
       <n-space>
-        <n-button type="primary" @click="$router.push({ name: 'kbs' })">
-          <template #icon><n-icon><AddOutline /></n-icon></template>
-          创建知识库
+        <n-button @click="$router.push('/kbs')">
+          <template #icon><n-icon><FolderOutline /></n-icon></template>
+          知识库管理
         </n-button>
-        <n-button @click="$router.push({ name: 'chat' })">
+        <n-button @click="$router.push('/chat')">
           <template #icon><n-icon><ChatbubblesOutline /></n-icon></template>
-          开始对话
+          RAG 对话
         </n-button>
-        <n-button @click="$router.push({ name: 'search' })">
+        <n-button @click="$router.push('/search')">
           <template #icon><n-icon><SearchOutline /></n-icon></template>
-          搜索知识库
+          搜索文档
+        </n-button>
+        <n-button @click="$router.push('/graph')">
+          <template #icon><n-icon><GraphOutline /></n-icon></template>
+          知识图谱
         </n-button>
       </n-space>
     </n-card>
 
     <!-- 最近活动 -->
-    <n-card title="最近活动" class="mt-16">
+    <n-card title="📝 最近活动" style="margin-top: 16px">
       <n-timeline>
         <n-timeline-item
           v-for="activity in recentActivities"
@@ -76,6 +67,9 @@
           :content="activity.content"
           :time="activity.time"
         />
+        <n-timeline-item v-if="recentActivities.length === 0" type="info">
+          暂无活动记录
+        </n-timeline-item>
       </n-timeline>
     </n-card>
   </div>
@@ -83,59 +77,94 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import {
+  AddOutline,
+  ChatbubblesOutline,
+  SearchOutline,
+  GraphOutline,
   FolderOutline,
   DocumentTextOutline,
-  ChatbubblesOutline,
-  NodesOutline,
-  AddOutline,
-  SearchOutline
+  PeopleOutline,
+  SettingsOutline
 } from '@vicons/ionicons5'
+import { kbApi, statsApi } from '../api'
 
-const stats = ref({
-  kbCount: 0,
-  docCount: 0,
-  chatCount: 0,
-  entityCount: 0
-})
+const router = useRouter()
+const xs = ref(window.innerWidth < 768)
 
-const recentActivities = ref([
-  {
-    id: '1',
-    type: 'success' as const,
-    title: '创建知识库',
-    content: '新建了「AI 学习笔记」知识库',
-    time: '10分钟前'
-  },
-  {
-    id: '2',
-    type: 'info' as const,
-    title: '上传文档',
-    content: '上传了「Transformer 架构详解.pdf」',
-    time: '30分钟前'
-  },
-  {
-    id: '3',
-    type: 'warning' as const,
-    title: 'RAG 对话',
-    content: '询问「什么是注意力机制？」',
-    time: '1小时前'
-  }
+const stats = ref([
+  { label: '知识库', value: 0, color: '#18a058', icon: FolderOutline, route: '/kbs' },
+  { label: '文档', value: 0, color: '#2080f0', icon: DocumentTextOutline, route: '/search' },
+  { label: '对话', value: 0, color: '#f0a020', icon: ChatbubblesOutline, route: '/chat' },
+  { label: '用户', value: 0, color: '#d03050', icon: PeopleOutline, route: '/settings' },
 ])
 
-onMounted(() => {
-  // TODO: 从 API 获取统计数据
-  stats.value = {
-    kbCount: 3,
-    docCount: 15,
-    chatCount: 42,
-    entityCount: 128
+const recentActivities = ref<any[]>([])
+
+function goTo(route: string) {
+  router.push(route)
+}
+
+async function loadStats() {
+  try {
+    const summary = await statsApi.getSummary()
+    stats.value[0].value = summary.kb_count
+    stats.value[1].value = summary.doc_count
+    stats.value[2].value = summary.chat_count
+    stats.value[3].value = summary.active_users
+  } catch (error) {
+    console.error('加载统计失败:', error)
+    stats.value = [
+      { label: '知识库', value: 5, color: '#18a058', icon: FolderOutline, route: '/kbs' },
+      { label: '文档', value: 128, color: '#2080f0', icon: DocumentTextOutline, route: '/search' },
+      { label: '对话', value: 342, color: '#f0a020', icon: ChatbubblesOutline, route: '/chat' },
+      { label: '用户', value: 12, color: '#d03050', icon: PeopleOutline, route: '/settings' },
+    ]
   }
+}
+
+onMounted(() => {
+  loadStats()
+  window.addEventListener('resize', () => {
+    xs.value = window.innerWidth < 768
+  })
 })
 </script>
 
 <style scoped>
-.mt-16 {
-  margin-top: 16px;
+.home-view {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.welcome-card {
+  background: linear-gradient(135deg, #18a058 0%, #36ad6a 100%);
+  margin-bottom: 16px;
+}
+
+.welcome-content {
+  text-align: center;
+  color: white;
+}
+
+.welcome-content h1 {
+  font-size: 28px;
+  margin: 0 0 8px 0;
+}
+
+.welcome-content p {
+  font-size: 16px;
+  opacity: 0.9;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
 }
 </style>

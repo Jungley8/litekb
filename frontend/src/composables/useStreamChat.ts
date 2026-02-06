@@ -2,7 +2,6 @@
  * SSE 流式对话 Hook
  */
 import { ref, onUnmounted } from 'vue'
-import { chatApi } from './index'
 
 interface Message {
   id: string
@@ -11,70 +10,82 @@ interface Message {
   sources?: any[]
 }
 
+interface UseStreamChatOptions {
+  onMessage?: (data: any) => void
+  onSources?: (sources: any[]) => void
+  onDone?: () => void
+  onError?: (error: string) => void
+}
+
 export function useStreamChat() {
   const isStreaming = ref(false)
-  const messages = ref<Message[]>([])
   const eventSource = ref<EventSource | null>(null)
 
   function connect(
     kbId: string,
     message: string,
-    onMessage: (data: any) => void,
-    onDone: () => void,
-    onError: (error: string) => void
-  ) {
+    options: UseStreamChatOptions = {}
+  ): EventSource | null {
+    disconnect()
     isStreaming.value = true
 
-    // 构建 SSE URL
     const token = localStorage.getItem('token')
-    const url = new URL(`${import.meta.env.VITE_API_URL}/api/v1/kb/${kbId}/chat/stream`)
+    const url = new URL(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/kb/${kbId}/chat/stream`)
     url.searchParams.set('message', message)
     url.searchParams.set('mode', 'naive')
 
-    const eventSource = new EventSource(url.toString())
-    eventSource.headers = { Authorization: `Bearer ${token}` }
+    const es = new EventSource(url.toString(), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
 
-    eventSource.onmessage = (event) => {
+    es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        onMessage(data)
+        options.onMessage?.(data)
       } catch (e) {
-        console.error('Parse SSE data error:', e)
+        console.error('Parse SSE message error:', e)
       }
     }
 
-    eventSource.addEventListener('sources', (event) => {
+    es.addEventListener('sources', (event) => {
       try {
-        const data = JSON.parse(event.data)
-        onMessage({ type: 'sources', ...data })
+        const data = JSON.parse((event as MessageEvent).data)
+        options.onSources?.(data.sources || [])
       } catch (e) {
         console.error('Parse sources error:', e)
       }
     })
 
-    eventSource.addEventListener('message', (event) => {
+    es.addEventListener('message', (event) => {
       try {
-        const data = JSON.parse(event.data)
-        onMessage({ type: 'content', ...data })
+        const data = JSON.parse((event as MessageEvent).data)
+        if (data.content) {
+          options.onMessage?.({ type: 'content', data: data.content })
+        }
       } catch (e) {
         console.error('Parse message error:', e)
       }
     })
 
-    eventSource.addEventListener('done', () => {
+    es.addEventListener('done', () => {
       isStreaming.value = false
-      eventSource.close()
-      onDone()
+      es.close()
+      options.onDone?.()
     })
 
-    eventSource.addEventListener('error', (event) => {
+    es.addEventListener('error', (event) => {
       isStreaming.value = false
-      eventSource.close()
-      const data = JSON.parse((event as MessageEvent).data)
-      onError(data.detail || 'Unknown error')
+      try {
+        const data = JSON.parse((event as MessageEvent).data)
+        options.onError?.(data.detail || 'Unknown error')
+      } catch {
+        options.onError?.('Connection error')
+      }
+      es.close()
     })
 
-    return eventSource
+    eventSource.value = es
+    return es
   }
 
   function disconnect() {
@@ -91,7 +102,6 @@ export function useStreamChat() {
 
   return {
     isStreaming,
-    messages,
     connect,
     disconnect
   }

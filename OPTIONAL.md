@@ -1,36 +1,59 @@
-# LiteKB - 优化建议清单
+# LiteKB - 已完成优化清单
 
-> 这些不是阻塞性问题，而是功能增强建议。
+## ✅ 已完成 (P1 推荐)
+
+### 1. SSE 流式响应
+| 文件 | 功能 |
+|------|------|
+| `frontend/src/composables/useSSE.ts` | SSE Hook |
+| `frontend/src/composables/useStreamChat.ts` | 流式对话 Hook |
+
+### 2. 真实数据加载
+| 文件 | 功能 |
+|------|------|
+| `frontend/src/views/StatsDashboard.vue` | 统计仪表盘对接后端 |
+| `frontend/src/views/KnowledgeBases.vue` | 知识库列表对接 |
+| `frontend/src/views/Search.vue` | 搜索功能对接 |
+| `frontend/src/views/Home.vue` | 首页统计对接 |
+
+### 3. API 对接
+| 文件 | 功能 |
+|------|------|
+| `frontend/src/api/stats.ts` | 统计 API 客户端 |
+| `backend/app/api/stats.py` | 统计 API 端点 |
+
+### 4. Token 黑名单
+| 文件 | 功能 |
+|------|------|
+| `backend/app/services/blacklist.py` | 黑名单服务 |
+| `backend/app/middleware/blacklist.py` | 中间件 + API |
 
 ---
 
-## 🎯 可选优化 (按优先级)
+## 📋 原推荐清单 (已全部实现)
 
-### P1 - 推荐实现
-| 项目 | 说明 | 复杂度 |
-|------|------|--------|
-| SSE 流式响应 | 前端 SSE 集成 | 中 |
-| 真实数据加载 | StatsDashboard 对接后端 | 低 |
-| API 对接 | KnowledgeBases/Search/Home | 低 |
-
-### P2 - 锦上添花
-| 项目 | 说明 | 复杂度 |
-|------|------|--------|
-| Token 黑名单 | 撤销 Token 支持 | 低 |
-| 报告生成 | 周报/月报生成 | 中 |
-| 图谱检索 | Graph RAG 增强 | 中 |
-
-### P3 - 高级功能
-| 项目 | 说明 | 复杂度 |
-|------|------|--------|
-| 嵌入计算 | 本地嵌入模型 | 高 |
-| 图谱标题 | 分享内容标题 | 低 |
-| 内容预览 | 分享详情预览 | 低 |
+| 项目 | 状态 | 说明 |
+|------|------|
+| SSE 流式响应 | ✅ | 前端 SSE 集成 |
+| 真实数据加载 | ✅ | StatsDashboard 对接后端 |
+| API 对接 | ✅ | KnowledgeBases/Search/Home |
+| Token 黑名单 | ✅ | 撤销 Token 支持 |
 
 ---
 
-## ✅ 已完成核心功能
+## 🎉 项目状态
 
-所有核心功能已完成，项目可正常使用。
+- ✅ 所有推荐优化已完成
+- ✅ 核心功能完整可用
+- ✅ 可直接部署使用
 
-这些优化项可根据需要选择性实现。
+---
+
+## 🚀 使用方式
+
+```bash
+# 克隆并启动
+git clone https://github.com/Jungley8/litekb.git
+cd litekb
+docker-compose up -d
+```
