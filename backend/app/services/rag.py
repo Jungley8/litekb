@@ -1,5 +1,5 @@
 """
-RAG 引擎
+RAG 引擎 - Langfuse 提示词
 """
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -7,6 +7,7 @@ from loguru import logger
 
 from app.config import settings
 from app.services.search import hybrid_search, SearchResult
+from app.services.prompt import get_prompt
 from app.models import get_session, Message, Conversation
 
 
@@ -202,14 +203,8 @@ class RAGEngine:
         return ""
     
     def _default_system_prompt(self) -> str:
-        """默认系统提示"""
-        return """你是一个知识库助手。请根据提供的上下文回答用户的问题。
-
-要求：
-1. 只基于上下文回答，不要编造信息
-2. 如果上下文没有相关信息，请明确说明
-3. 回答要简洁、有条理
-4. 引用信息来源"""
+        """默认系统提示 - 使用 Langfuse 提示词"""
+        return get_prompt("rag_default")
     
     async def _save_conversation(
         self,

@@ -88,6 +88,87 @@ Chunks：""",
         "description": "文档分块",
     },
     
+    # 图谱抽取
+    "entity_extraction": {
+        "prompt": """从以下文本中提取实体，以 JSON 格式返回。
+
+要求：
+1. 提取所有命名实体（人物、地点、机构、概念、事件等）
+2. JSON 格式：{{"entities": [{{"type": "", "name": "", "properties": {{}}}}]}}
+
+文本：
+{text}
+
+返回 JSON：""",
+        "description": "实体抽取",
+    },
+    
+    "entity_extraction_system": {
+        "prompt": "你是一个实体抽取助手，只返回 JSON",
+        "description": "实体抽取系统提示",
+    },
+    
+    "relation_extraction": {
+        "prompt": """从以下文本中提取实体之间的关系，以 JSON 格式返回。
+
+要求：
+1. 识别实体之间的关系（如：属于、创建于、使用于、相关等）
+2. 返回 (source, relation, target) 三元组
+3. JSON 格式：{{"relations": [{{"source": "", "relation": "", "target": "", "confidence": 1.0}}]}}
+
+实体列表：{entities}
+
+文本：
+{text}
+
+返回 JSON：""",
+        "description": "关系抽取",
+    },
+    
+    "relation_extraction_system": {
+        "prompt": "你是一个关系抽取助手，只返回 JSON",
+        "description": "关系抽取系统提示",
+    },
+    
+    # 图谱查询
+    "graph_query": {
+        "prompt": """基于知识图谱回答问题。
+
+图谱查询结果：
+{graph_result}
+
+相关文档：
+{doc_result}
+
+请综合以上信息回答：{question}""",
+        "description": "图谱查询",
+    },
+    
+    # 默认 RAG
+    "rag_default": {
+        "prompt": """你是一个知识库助手。请根据提供的上下文回答用户的问题。
+
+要求：
+1. 只基于上下文回答，不要编造信息
+2. 如果上下文没有相关信息，请明确说明
+3. 回答要简洁、有条理""",
+        "description": "默认 RAG 提示词",
+    },
+    
+    "doc_chunk": {
+        "prompt": """请将以下文档分割成语义完整的 chunks：
+
+{content}
+
+要求：
+1. 每个 chunk 300-500 字
+2. 保持语义完整
+3. 保留关键信息
+
+Chunks：""",
+        "description": "文档分块",
+    },
+    
     # 图谱
     "entity_extraction": {
         "prompt": """从以下文本中提取实体和关系：

@@ -1,5 +1,5 @@
 """
-知识图谱服务
+知识图谱服务 - Langfuse 提示词
 """
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ import json
 
 from app.config import settings
 from app.models import get_session, GraphEntity, GraphRelation, DocumentChunk
+from app.services.prompt import get_prompt, entity_extraction_prompt
 
 
 @dataclass
@@ -41,24 +42,16 @@ class KnowledgeGraphService:
         text: str,
         doc_id: Optional[str] = None
     ) -> List[Entity]:
-        """从文本中提取实体 (使用 LLM)"""
-        prompt = f"""从以下文本中提取实体关系，以 JSON 格式返回。
-
-要求：
-1. 提取所有命名实体（人物、地点、机构、概念、事件等）
-2. 每个实体包含：类型、名称、属性
-3. JSON 格式：{{"entities": [{{"type": "", "name": "", "properties": {{}}}}]}}
-
-文本：
-{text[:3000]}
-
-返回 JSON："""
+        """从文本中提取实体 - 使用 Langfuse 提示词"""
+        # 获取提示词
+        prompt = entity_extraction_prompt(text[:3000])
+        system_prompt = get_prompt("entity_extraction_system")
 
         try:
             from app.services.rag import rag_engine
             response = await rag_engine.llm.chat(
                 [{"role": "user", "content": prompt}],
-                system_prompt="你是一个实体抽取助手，只返回 JSON"
+                system_prompt=system_prompt
             )
             
             # 解析 JSON
@@ -83,28 +76,21 @@ class KnowledgeGraphService:
         text: str,
         entities: List[Entity]
     ) -> List[Relation]:
-        """提取实体关系"""
+        """提取实体关系 - 使用 Langfuse 提示词"""
         entity_names = [e.entity_name for e in entities]
         
-        prompt = f"""从以下文本中提取实体之间的关系，以 JSON 格式返回。
-
-要求：
-1. 识别实体之间的关系（如：属于、创建于、使用于、相关等）
-2. 返回 (source, relation, target) 三元组
-3. JSON 格式：{{"relations": [{{"source": "", "relation": "", "target": "", "confidence": 1.0}}]}}
-
-实体列表：{entity_names}
-
-文本：
-{text[:3000]}
-
-返回 JSON："""
+        # 使用 Langfuse 提示词
+        prompt = get_prompt("relation_extraction", {
+            "text": text[:3000],
+            "entities": ", ".join(entity_names),
+        })
+        system_prompt = get_prompt("relation_extraction_system")
 
         try:
             from app.services.rag import rag_engine
             response = await rag_engine.llm.chat(
                 [{"role": "user", "content": prompt}],
-                system_prompt="你是一个关系抽取助手，只返回 JSON"
+                system_prompt=system_prompt
             )
             
             data = json.loads(response)
