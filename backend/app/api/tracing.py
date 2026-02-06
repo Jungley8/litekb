@@ -1,35 +1,11 @@
 """
-Tracing API 端点
+API 端点 - 提示词管理 + Token 统计 (Langfuse)
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 
 router = APIRouter()
-
-
-class PromptCreateRequest(BaseModel):
-    """创建提示词请求"""
-    name: str
-    prompt: str
-    version: Optional[int] = None
-    description: Optional[str] = None
-
-
-class PromptResponse(BaseModel):
-    """提示词响应"""
-    name: str
-    version: int
-    prompt: str
-    metadata: Dict
-    created_at: str
-
-
-class PromptUpdateRequest(BaseModel):
-    """更新提示词请求"""
-    prompt: str
-    description: Optional[str] = None
 
 
 # ============== 提示词管理 ==============
@@ -37,95 +13,65 @@ class PromptUpdateRequest(BaseModel):
 @router.get("/api/v1/prompts")
 async def list_prompts() -> List[Dict[str, Any]]:
     """列出所有提示词"""
-    from app.tracing.prompts import prompt_manager
+    from app.tracing.langfuse import langfuse_tracing
     
-    prompts = []
-    for file_path in Path("./data/prompts").glob("*_v*.json"):
-        name = file_path.stem.rsplit("_v", 1)[0]
-        prompt = prompt_manager.get_latest(name)
-        if prompt:
-            prompts.append({
-                "name": prompt["name"],
-                "version": prompt["version"],
-                "description": prompt.get("metadata", {}).get("description", ""),
-                "created_at": prompt["created_at"],
-            })
+    if not langfuse_tracing.enabled:
+        return []
     
-    return prompts
+    return langfuse_tracing.list_prompts()
 
 
 @router.get("/api/v1/prompts/{name}")
-async def get_prompt(name: str, version: int = None) -> PromptResponse:
+async def get_prompt(name: str, version: int = None) -> Dict[str, Any]:
     """获取提示词"""
-    from app.tracing.prompts import prompt_manager
+    from app.tracing.langfuse import langfuse_tracing
     
-    prompt = prompt_manager.get_prompt(name, version)
+    prompt = langfuse_tracing.get_prompt(name, version)
     if not prompt:
         raise HTTPException(status_code=404, detail="Prompt not found")
     
-    return PromptResponse(
-        name=prompt["name"],
-        version=prompt["version"],
-        prompt=prompt["prompt"],
-        metadata=prompt.get("metadata", {}),
-        created_at=prompt["created_at"],
-    )
+    return prompt
 
 
-@router.post("/api/v1/prompts", response_model=PromptResponse)
-async def create_prompt(request: PromptCreateRequest) -> PromptResponse:
-    """创建/更新提示词"""
-    from app.tracing.prompts import prompt_manager
-    
-    result = prompt_manager.save_prompt(
-        name=request.name,
-        prompt=request.prompt,
-        version=request.version,
-        metadata={"description": request.description},
-    )
-    
-    return PromptResponse(
-        name=result["name"],
-        version=result["version"],
-        prompt=result["prompt"],
-        metadata=result.get("metadata", {}),
-        created_at=result["created_at"],
-    )
-
-
-@router.get("/api/v1/prompts/{name}/versions")
-async def list_prompt_versions(name: str) -> List[Dict[str, Any]]:
-    """列出提示词所有版本"""
-    from app.tracing.prompts import prompt_manager
-    
-    return prompt_manager.list_versions(name)
-
-
-@router.get("/api/v1/prompts/{name}/compare")
-async def compare_prompt_versions(
+@router.post("/api/v1/prompts")
+async def create_prompt(
     name: str,
-    v1: int,
-    v2: int,
+    prompt: str,
+    version: int = None,
+    config: Dict = None,
 ) -> Dict[str, Any]:
-    """比较版本"""
-    from app.tracing.prompts import prompt_manager
+    """创建提示词"""
+    from app.tracing.langfuse import langfuse_tracing
     
-    result = prompt_manager.compare_versions(name, v1, v2)
+    result = langfuse_tracing.create_prompt(name, prompt, version, config)
     if not result:
-        raise HTTPException(status_code=404, detail="Versions not found")
+        raise HTTPException(status_code=500, detail="Failed to create prompt")
     
     return result
 
 
-@router.delete("/api/v1/prompts/{name}/versions/{version}")
-async def delete_prompt_version(name: str, version: int):
-    """删除版本"""
-    from app.tracing.prompts import prompt_manager
+@router.put("/api/v1/prompts/{name}")
+async def update_prompt(
+    name: str,
+    prompt: str,
+    config: Dict = None,
+) -> Dict[str, Any]:
+    """更新提示词 (自动版本管理)"""
+    from app.tracing.langfuse import langfuse_tracing
     
-    if not prompt_manager.delete_version(name, version):
-        raise HTTPException(status_code=404, detail="Version not found")
+    result = langfuse_tracing.update_prompt(name, prompt, config)
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to update prompt")
     
-    return {"message": "deleted"}
+    return result
+
+
+@router.get("/api/v1/prompts/{name}/versions")
+async def get_prompt_versions(name: str) -> List[Dict[str, Any]]:
+    """获取提示词版本历史"""
+    from app.tracing.langfuse import langfuse_tracing
+    
+    return langfuse_tracing.get_prompt_versions(name)
 
 
 @router.post("/api/v1/prompts/{name}/render")
@@ -135,61 +81,79 @@ async def render_prompt(
     version: int = None,
 ) -> Dict[str, str]:
     """渲染提示词"""
-    from app.tracing.prompts import prompt_manager
+    from app.tracing.langfuse import langfuse_tracing
     
-    rendered = prompt_manager.render_prompt(name, variables, version)
+    rendered = langfuse_tracing.render_prompt(name, variables, version)
     if not rendered:
         raise HTTPException(status_code=404, detail="Prompt not found")
     
     return {"prompt": rendered}
 
 
-# ============== 追踪统计 ==============
+@router.delete("/api/v1/prompts/{name}/versions/{version}")
+async def delete_prompt_version(name: str, version: int) -> Dict[str, str]:
+    """删除提示词版本"""
+    from app.tracing.langfuse import langfuse_tracing
+    
+    success = langfuse_tracing.delete_prompt(name, version)
+    if not success:
+        raise HTTPException(status_code=500, detail="Cannot delete prompt (Langfuse API limitation)")
+    
+    return {"message": "deleted"}
+
+
+# ============== Token & Cost 统计 ==============
 
 @router.get("/api/v1/tracing/stats")
-async def get_tracing_stats() -> Dict[str, Any]:
-    """获取追踪统计"""
-    from app.tracing.decorators import token_tracker
+async def get_token_stats() -> Dict[str, Any]:
+    """获取 Token 使用统计 (从 Langfuse)"""
+    from app.tracing.langfuse import langfuse_tracing
+    
+    if not langfuse_tracing.enabled:
+        return {
+            "enabled": False,
+            "message": "Langfuse not configured",
+            "stats": {
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "total_tokens": 0,
+                "total_cost": 0,
+                "by_model": {},
+            }
+        }
+    
+    stats = langfuse_tracing.get_token_stats()
     
     return {
-        "tokens": token_tracker.get_stats(),
         "enabled": True,
+        "stats": stats,
     }
 
 
-@router.post("/api/v1/tracing/reset")
-async def reset_tracing_stats():
-    """重置追踪统计"""
-    from app.tracing.decorators import token_tracker
+@router.get("/api/v1/tracing/generations")
+async def get_generations(
+    name: str = None,
+    limit: int = 100,
+) -> List[Dict[str, Any]]:
+    """获取生成记录"""
+    from app.tracing.langfuse import langfuse_tracing
     
-    token_tracker.reset()
-    return {"message": "reset"}
+    return langfuse_tracing.get_generations(name, limit)
 
-
-# ============== Langfuse 状态 ==============
 
 @router.get("/api/v1/tracing/status")
 async def get_tracing_status() -> Dict[str, Any]:
     """获取追踪状态"""
-    from app.tracing.langfuse import langfuse
+    from app.tracing.langfuse import langfuse_tracing
     
     return {
-        "enabled": langfuse.enabled,
-        "status": "healthy" if langfuse.enabled else "disabled",
+        "enabled": langfuse_tracing.enabled,
+        "status": "healthy" if langfuse_tracing.enabled else "disabled",
     }
 
 
-# ============== 默认提示词 ==============
-
-@router.get("/api/v1/prompts/defaults")
-async def get_default_prompts() -> Dict[str, Any]:
-    """获取默认提示词模板"""
-    from app.tracing.prompts import DEFAULT_PROMPTS
-    
-    return {
-        name: {
-            "description": config["description"],
-            "prompt": config["prompt"][:500] + "...",
-        }
-        for name, config in DEFAULT_PROMPTS.items()
-    }
+@router.post("/api/v1/tracing/clear")
+async def clear_local_cache():
+    """清除本地缓存 (仅本地追踪)"""
+    # Langfuse 数据在云端
+    return {"message": "Note: Langfuse data is managed in cloud"}
