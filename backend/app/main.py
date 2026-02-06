@@ -1,54 +1,23 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
+"""
+main.py - LiteKB API Server
+"""
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, AsyncGenerator
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 import uuid
-from contextlib import asynccontextmanager
 import os
+import json
 
 # ==================== 配置 ====================
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "60"))
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 启动时初始化
-    from app.db import init_db
-    from app.services.vector import vector_store
-    
-    init_db()
-    
-    # 初始化向量库集合
-    try:
-        await vector_store.create_collection()
-    except Exception as e:
-        print(f"向量库初始化: {e}")
-    
-    yield
-    # 关闭时清理
-    pass
-
-app = FastAPI(
-    title="LiteKB API",
-    description="轻量级开源知识库系统 API",
-    version="0.1.0",
-    lifespan=lifespan
-)
-
-# CORS - 支持多域名
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应改为具体域名
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "60"))
 
 # ==================== 数据模型 ====================
 
@@ -71,6 +40,17 @@ class User(BaseModel):
     email: Optional[str]
     created_at: datetime
 
+class KnowledgeBaseCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class KnowledgeBase(BaseModel):
+    id: str
+    name: str
+    description: Optional[str]
+    doc_count: int
+    created_at: datetime
+
 class DocumentCreate(BaseModel):
     title: str
     content: Optional[str] = None
@@ -83,31 +63,11 @@ class Document(BaseModel):
     status: str
     created_at: datetime
 
-class KnowledgeBaseCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-
-class KnowledgeBase(BaseModel):
-    id: str
-    name: str
-    description: Optional[str]
-    doc_count: int
-    created_at: datetime
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
 class ChatRequest(BaseModel):
     kb_id: str
     message: str
-    history: Optional[List[ChatMessage]] = []
+    history: Optional[List[dict]] = []
     mode: str = "naive"
-
-class ChatResponse(BaseModel):
-    answer: str
-    sources: List[dict]
-    conversation_id: str
 
 class SearchRequest(BaseModel):
     query: str
@@ -115,44 +75,90 @@ class SearchRequest(BaseModel):
     top_k: int = 10
     filters: Optional[dict] = None
 
-class SearchResult(BaseModel):
-    id: str
-    title: str
-    content: str
-    score: float
-    type: str
+# ==================== 初始化 ====================
 
-# ==================== 模拟数据库 ====================
+from contextlib import asynccontextmanager
 
-users_db = {}
-kb_db = {}
-doc_db = {}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 初始化数据库
+    from app.db.json_store import json_store
+    os.makedirs("./data", exist_ok=True)
+    
+    # 初始化向量库
+    from app.services.vector import vector_store
+    try:
+        await vector_store.create_collection()
+    except Exception as e:
+        print(f"向量库初始化: {e}")
+    
+    # 初始化缓存
+    from app.services.cache import cache
+    await cache.get_redis()
+    
+    yield
+    # 关闭时清理
+    await cache.close()
+
+app = FastAPI(
+    title="LiteKB API",
+    description="轻量级开源知识库系统 API",
+    version="0.1.0",
+    lifespan=lifespan
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 缓存中间件
+@app.middleware("http")
+async def cache_middleware(request: Request, call_next):
+    # 简单缓存：对 GET 请求缓存 10 秒
+    if request.method == "GET" and request.url.path.startswith("/api/v1/kb/"):
+        from app.services.cache import cache
+        cache_key = f"http:{request.url.path}:{dict(request.query_params)}"
+        cached = await cache.get(cache_key)
+        if cached:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(content=cached)
+        
+        response = await call_next(request)
+        
+        # 缓存响应
+        if response.status_code == 200:
+            try:
+                body = b"".join([chunk async for chunk in response.body_iterator])
+                await cache.set(cache_key, json.loads(body), 10)
+                return JSONResponse(content=json.loads(body))
+            except:
+                pass
+        
+        return response
+    
+    return await call_next(request)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def create_user(username: str, password: str, email: Optional[str] = None) -> User:
-    user_id = str(uuid.uuid4())
-    hashed = pwd_context.hash(password)
-    users_db[user_id] = {
-        "id": user_id,
-        "username": username,
-        "email": email,
-        "hashed_password": hashed,
-        "created_at": datetime.utcnow()
-    }
-    return User(**users_db[user_id])
+# ==================== 辅助函数 ====================
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+# ==================== 数据库 ====================
+
+from app.db.json_store import json_store
 
 # ==================== 认证依赖 ====================
 
@@ -170,7 +176,7 @@ async def get_current_user(token: str) -> User:
     except JWTError:
         raise credentials_exception
     
-    user_data = users_db.get(user_id)
+    user_data = json_store.get_user(user_id)
     if user_data is None:
         raise credentials_exception
     
@@ -184,171 +190,105 @@ async def root():
 
 @app.post("/api/v1/auth/register", response_model=User)
 async def register(user: UserCreate):
-    for u in users_db.values():
-        if u["username"] == user.username:
-            raise HTTPException(status_code=400, detail="Username already registered")
-    return create_user(user.username, user.password, user.email)
+    """用户注册"""
+    existing = json_store.get_user_by_username(user.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    hashed = pwd_context.hash(user.password)
+    user_data = {
+        "id": str(uuid.uuid4()),
+        "username": user.username,
+        "email": user.email,
+        "hashed_password": hashed,
+    }
+    return User(**json_store.create_user(user_data["id"], user_data))
 
 @app.post("/api/v1/auth/login", response_model=Token)
 async def login(user: UserLogin):
-    found = None
-    for u in users_db.values():
-        if u["username"] == user.username:
-            found = u
-            break
-    
-    if not found or not verify_password(user.password, found["hashed_password"]):
+    """用户登录"""
+    existing = json_store.get_user_by_username(user.username)
+    if not existing or not verify_password(user.password, existing.get("hashed_password", "")):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
-    access_token = create_access_token(data={"sub": found["id"]})
+    access_token = create_access_token(data={"sub": existing["id"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/api/v1/me", response_model=User)
 async def get_me(current_user: User = Depends(get_current_user)):
+    """获取当前用户"""
     return current_user
 
 # ==================== 知识库 API ====================
 
 @app.post("/api/v1/kb", response_model=KnowledgeBase)
-async def create_kb(
-    kb: KnowledgeBaseCreate,
-    current_user: User = Depends(get_current_user)
-):
-    kb_id = str(uuid.uuid4())
-    kb_db[kb_id] = {
-        "id": kb_id,
+async def create_kb(kb: KnowledgeBaseCreate, current_user: User = Depends(get_current_user)):
+    """创建知识库"""
+    kb_data = {
+        "id": str(uuid.uuid4()),
         "name": kb.name,
         "description": kb.description,
-        "doc_count": 0,
         "created_by": current_user.id,
-        "created_at": datetime.utcnow()
     }
-    return KnowledgeBase(**kb_db[kb_id])
+    return KnowledgeBase(**json_store.create_kb(kb_data["id"], kb_data))
 
 @app.get("/api/v1/kb", response_model=List[KnowledgeBase])
 async def list_kbs(current_user: User = Depends(get_current_user)):
-    return [KnowledgeBase(**v) for v in kb_db.values()]
+    """列出知识库"""
+    return [KnowledgeBase(**kb) for kb in json_store.list_kbs()]
 
 @app.get("/api/v1/kb/{kb_id}", response_model=KnowledgeBase)
 async def get_kb(kb_id: str, current_user: User = Depends(get_current_user)):
-    if kb_id not in kb_db:
+    """获取知识库"""
+    kb = json_store.get_kb(kb_id)
+    if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
-    return KnowledgeBase(**kb_db[kb_id])
-
-@app.put("/api/v1/kb/{kb_id}")
-async def update_kb(
-    kb_id: str,
-    data: KnowledgeBaseCreate,
-    current_user: User = Depends(get_current_user)
-):
-    if kb_id not in kb_db:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
-    kb_db[kb_id].update({
-        "name": data.name,
-        "description": data.description
-    })
-    return kb_db[kb_id]
+    return KnowledgeBase(**kb)
 
 @app.delete("/api/v1/kb/{kb_id}")
 async def delete_kb(kb_id: str, current_user: User = Depends(get_current_user)):
-    if kb_id not in kb_db:
+    """删除知识库"""
+    if not json_store.delete_kb(kb_id):
         raise HTTPException(status_code=404, detail="Knowledge base not found")
-    del kb_db[kb_id]
     return {"message": "deleted"}
 
 # ==================== 文档 API ====================
 
 @app.post("/api/v1/kb/{kb_id}/docs", response_model=Document)
-async def create_doc(
-    kb_id: str,
-    doc: DocumentCreate,
-    current_user: User = Depends(get_current_user)
-):
-    if kb_id not in kb_db:
+async def create_doc(kb_id: str, doc: DocumentCreate, current_user: User = Depends(get_current_user)):
+    """创建文档"""
+    kb = json_store.get_kb(kb_id)
+    if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
-    doc_id = str(uuid.uuid4())
-    doc_db[doc_id] = {
-        "id": doc_id,
+    doc_data = {
+        "id": str(uuid.uuid4()),
         "kb_id": kb_id,
         "title": doc.title,
         "content": doc.content,
-        "status": "indexed",
-        "created_at": datetime.utcnow()
+        "metadata": doc.metadata,
     }
-    
-    kb_db[kb_id]["doc_count"] += 1
-    
-    return Document(**doc_db[doc_id])
-
-@app.post("/api/v1/kb/{kb_id}/docs/upload")
-async def upload_document(
-    kb_id: str,
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
-):
-    """上传文档文件"""
-    if kb_id not in kb_db:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
-    
-    # 读取文件内容
-    content = await file.read()
-    filename = file.filename or "document"
-    
-    # 处理文档
-    from app.services.document import document_service
-    doc = await document_service.create_document(
-        kb_id=kb_id,
-        title=filename,
-        content=content,
-        filename=filename
-    )
-    
-    return {
-        "id": doc.id,
-        "title": doc.title,
-        "status": doc.status,
-        "message": "文档上传成功"
-    }
+    return Document(**json_store.create_doc(doc_data["id"], doc_data))
 
 @app.get("/api/v1/kb/{kb_id}/docs", response_model=List[Document])
-async def list_documents(
-    kb_id: str,
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(get_current_user)
-):
-    if kb_id not in kb_db:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
-    
-    docs = [Document(**d) for d in doc_db.values() if d.get("kb_id") == kb_id]
-    return docs[skip:skip+limit]
+async def list_documents(kb_id: str, skip: int = 0, limit: int = 100, current_user: User = Depends(get_current_user)):
+    """列出文档"""
+    return [Document(**d) for d in json_store.list_docs(kb_id, skip, limit)]
 
 @app.delete("/api/v1/kb/{kb_id}/docs/{doc_id}")
-async def delete_document(
-    kb_id: str,
-    doc_id: str,
-    current_user: User = Depends(get_current_user)
-):
-    if doc_id not in doc_db:
+async def delete_document(kb_id: str, doc_id: str, current_user: User = Depends(get_current_user)):
+    """删除文档"""
+    if not json_store.delete_doc(doc_id):
         raise HTTPException(status_code=404, detail="Document not found")
-    
-    del doc_db[doc_id]
-    if kb_id in kb_db:
-        kb_db[kb_id]["doc_count"] = max(0, kb_db[kb_id]["doc_count"] - 1)
-    
     return {"message": "deleted"}
 
 # ==================== 搜索 API ====================
 
 @app.post("/api/v1/kb/{kb_id}/search")
-async def search_kb(
-    kb_id: str,
-    request: SearchRequest,
-    current_user: User = Depends(get_current_user)
-):
-    """混合检索"""
-    if kb_id not in kb_db:
+async def search_kb(kb_id: str, request: SearchRequest, current_user: User = Depends(get_current_user)):
+    """知识库内搜索"""
+    kb = json_store.get_kb(kb_id)
+    if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
     from app.services.search import search_service
@@ -364,175 +304,133 @@ async def search_kb(
     return {
         "results": [
             {
-                "id": r.id,
-                "title": r.metadata.get("source", "Unknown"),
-                "content": r.content[:500],
-                "score": r.score,
-                "type": r.source_type
+                "id": r.get("id", ""),
+                "title": r.get("title", ""),
+                "content": r.get("content", "")[:500],
+                "score": r.get("score", 0),
+                "type": r.get("type", "document")
             }
             for r in results
         ],
         "strategy": request.strategy
     }
 
+@app.post("/api/v1/search")
+async def global_search(request: SearchRequest, current_user: User = Depends(get_current_user)):
+    """全局搜索"""
+    from app.services.search import search_service
+    
+    all_results = []
+    for kb in json_store.list_kbs():
+        kb_id = kb["id"]
+        results = await search_service.hybrid_search(
+            query=request.query,
+            kb_id=kb_id,
+            strategy=request.strategy,
+            top_k=request.top_k,
+            filters=request.filters
+        )
+        for r in results:
+            all_results.append({
+                **r,
+                "kb_id": kb_id,
+                "kb_name": kb.get("name", ""),
+            })
+    
+    all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    
+    return {
+        "results": all_results[:request.top_k * 3],
+        "total_kbs": len(json_store.list_kbs()),
+        "strategy": request.strategy
+    }
+
 # ==================== RAG 对话 API ====================
 
-@app.post("/api/v1/kb/{kb_id}/chat", response_model=ChatResponse)
-async def chat_with_kb(
-    kb_id: str,
-    chat: ChatRequest,
-    current_user: User = Depends(get_current_user)
-):
+@app.post("/api/v1/kb/{kb_id}/chat")
+async def chat_with_kb(kb_id: str, chat: ChatRequest, current_user: User = Depends(get_current_user)):
     """RAG 对话"""
-    if kb_id not in kb_db:
+    kb = json_store.get_kb(kb_id)
+    if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
     from app.services.rag import rag_engine
-    
-    history = [{"role": m.role, "content": m.content} for m in (chat.history or [])]
     
     response = await rag_engine.query(
         kb_id=kb_id,
         question=chat.message,
         mode=chat.mode,
-        history=history
+        history=chat.history or []
     )
     
-    return ChatResponse(
-        answer=response.answer,
-        sources=response.sources,
-        conversation_id=response.conversation_id
-    )
+    return {
+        "answer": response.answer,
+        "sources": response.sources,
+        "conversation_id": response.conversation_id
+    }
 
 @app.post("/api/v1/kb/{kb_id}/chat/stream")
-async def stream_chat(
-    kb_id: str,
-    chat: ChatRequest,
-    current_user: User = Depends(get_current_user)
-):
+async def stream_chat(kb_id: str, chat: ChatRequest, current_user: User = Depends(get_current_user)):
     """流式 RAG 对话 (SSE)"""
-    # TODO: 实现 SSE 流式响应
-    return await chat_with_kb(kb_id, chat, current_user)
+    kb = json_store.get_kb(kb_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    
+    from app.services.sse import sse_service
+    
+    stream_id = str(uuid.uuid4())
+    
+    async def generate():
+        async for chunk in sse_service.rag_stream(
+            stream_id=stream_id,
+            rag_engine=None,
+            kb_id=kb_id,
+            message=chat.message,
+            mode=chat.mode,
+        ):
+            yield chunk
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 # ==================== 知识图谱 API ====================
 
 @app.get("/api/v1/kb/{kb_id}/graph")
 async def get_graph(kb_id: str, current_user: User = Depends(get_current_user)):
     """获取知识图谱"""
-    if kb_id not in kb_db:
+    kb = json_store.get_kb(kb_id)
+    if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
     from app.services.graph import graph_service
-    
     return graph_service.get_graph(kb_id)
 
 @app.post("/api/v1/kb/{kb_id}/graph/build")
-async def build_graph(
-    kb_id: str,
-    rebuild: bool = False,
-    current_user: User = Depends(get_current_user)
-):
-    """构建/重建知识图谱"""
-    if kb_id not in kb_db:
+async def build_graph(kb_id: str, rebuild: bool = False, current_user: User = Depends(get_current_user)):
+    """构建知识图谱"""
+    kb = json_store.get_kb(kb_id)
+    if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
     from app.services.graph import graph_service
     
-    # 获取知识库所有文档
-    docs = [d for d in doc_db.values() if d.get("kb_id") == kb_id and d.get("content")]
-    
+    docs = json_store.list_docs(kb_id)
     stats = {"entities": 0, "relations": 0}
+    
     for doc in docs:
-        result = await graph_service.build_graph(
-            kb_id=kb_id,
-            doc_id=doc["id"],
-            text=doc["content"][:5000]  # 限制长度
-        )
-        stats["entities"] += result["entities"]
-        stats["relations"] += result["relations"]
-    
-    return {
-        "message": "图谱构建完成",
-        **stats
-    }
-
-@app.get("/api/v1/kb/{kb_id}/graph/search")
-async def search_graph(
-    kb_id: str,
-    q: str,
-    current_user: User = Depends(get_current_user)
-):
-    """搜索图谱实体"""
-    if kb_id not in kb_db:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
-    
-    from app.services.graph import graph_service
-    
-    return graph_service.search_entities(kb_id, q)
-
-@app.get("/api/v1/kb/{kb_id}/graph/entity/{entity_id}")
-async def get_entity(
-    kb_id: str,
-    entity_id: str,
-    current_user: User = Depends(get_current_user)
-):
-    """获取实体详情"""
-    from app.services.graph import graph_service
-    
-    return graph_service.get_entity_relations(kb_id, entity_id)
-
-
-# ==================== 全局搜索 API ====================
-
-@app.post("/api/v1/search")
-async def global_search(
-    request: SearchRequest,
-    current_user: User = Depends(get_current_user)
-):
-    """跨知识库全局搜索"""
-    from app.services.search import search_service
-    
-    all_results = []
-    
-    # 遍历所有知识库
-    for kb_id, kb_info in kb_db.items():
-        try:
-            results = await search_service.hybrid_search(
-                query=request.query,
+        if doc.get("content"):
+            result = await graph_service.build_graph(
                 kb_id=kb_id,
-                strategy=request.strategy,
-                top_k=request.top_k,
-                filters=request.filters
+                doc_id=doc["id"],
+                text=doc["content"][:5000]
             )
-            
-            all_results.extend([
-                {
-                    "kb_id": kb_id,
-                    "kb_name": kb_info["name"],
-                    "id": r.id,
-                    "title": r.metadata.get("source", "Unknown"),
-                    "content": r.content[:500],
-                    "score": r.score,
-                    "type": r.source_type
-                }
-                for r in results
-            ])
-        except Exception as e:
-            print(f"搜索 KB {kb_id} 失败: {e}")
+            stats["entities"] += result.get("entities", 0)
+            stats["relations"] += result.get("relations", 0)
     
-    # 按分数排序
-    all_results.sort(key=lambda x: x["score"], reverse=True)
-    
-    return {
-        "results": all_results[:request.top_k * 3],
-        "total_kbs": len(kb_db),
-        "strategy": request.strategy
-    }
+    return {"message": "图谱构建完成", **stats}
 
+# ==================== 注册其他路由 ====================
 
-# ==================== 注册缺失的路由 ====================
-
-# 模型管理 API
+# 模型管理
 try:
     from app.api.models import router as models_router
     app.include_router(models_router, prefix="")
@@ -555,7 +453,6 @@ try:
     print("✅ 分享 API 已注册")
 except Exception as e:
     print(f"⚠️ 分享 API 注册失败: {e}")
-
 
 # ==================== 启动 ====================
 
