@@ -1,9 +1,9 @@
 <template>
-  <n-config-provider :theme-overrides="themeOverrides">
+  <n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides">
     <n-message-provider>
       <n-notification-provider>
         <n-dialog-provider>
-          <div class="app-container">
+          <div class="app-container" :class="{ 'dark-mode': isDark }">
             <n-layout has-sider>
               <!-- 侧边栏 -->
               <n-layout-sider
@@ -31,6 +31,16 @@
                   :options="menuOptions"
                   @update:value="handleMenuClick"
                 />
+                
+                <!-- 主题切换 -->
+                <div class="theme-toggle">
+                  <n-button quaternary block @click="toggleTheme">
+                    <template #icon>
+                      <n-icon><MoonOutline v-if="isDark" /><SunnyOutline v-else /></n-icon>
+                    </template>
+                    <span v-show="!collapsed">{{ isDark ? '浅色模式' : '深色模式' }}</span>
+                  </n-button>
+                </div>
               </n-layout-sider>
 
               <!-- 主内容区 -->
@@ -40,18 +50,22 @@
                     <h2>{{ pageTitle }}</h2>
                   </div>
                   <div class="header-right">
-                    <n-button quaternary circle>
+                    <n-button quaternary circle @click="showSearch = true">
                       <template #icon>
-                        <n-icon><NotificationsOutline /></n-icon>
+                        <n-icon><SearchOutline /></n-icon>
                       </template>
                     </n-button>
-                    <n-avatar round size="small" class="user-avatar">
-                      U
+                    
+                    <!-- 组织选择器 -->
+                    <OrganizationSelector />
+                    
+                    <n-avatar round size="small" class="user-avatar" @click="$router.push('/settings')">
+                      {{ userInitials }}
                     </n-avatar>
                   </div>
                 </n-layout-header>
 
-                <n-layout-content class="content">
+                <n-layout-content class="content" :class="{ 'dark-content': isDark }">
                   <router-view />
                 </n-layout-content>
               </n-layout>
@@ -66,7 +80,7 @@
 <script setup lang="ts">
 import { ref, computed, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NIcon } from 'naive-ui'
+import { NIcon, darkTheme } from 'naive-ui'
 import {
   BookOutline,
   HomeOutline,
@@ -75,14 +89,23 @@ import {
   SearchOutline,
   GraphOutline,
   SettingsOutline,
-  NotificationsOutline,
-  AddOutline
+  StatsOutline,
+  MoonOutline,
+  SunnyOutline
 } from '@vicons/ionicons5'
+import OrganizationSelector from './components/OrganizationSelector.vue'
 
 const router = useRouter()
 const route = useRoute()
 const collapsed = ref(false)
 const activeKey = ref('home')
+const isDark = ref(false)
+const showSearch = ref(false)
+
+// 用户信息
+const userInitials = computed(() => {
+  return 'U'
+})
 
 // 页面标题
 const pageTitle = computed(() => {
@@ -93,10 +116,36 @@ const pageTitle = computed(() => {
     chat: 'RAG 对话',
     search: '搜索',
     graph: '知识图谱',
+    stats: '统计',
     settings: '设置'
   }
   return titles[route.name as string] || 'LiteKB'
 })
+
+// 主题切换
+function toggleTheme() {
+  isDark.value = !isDark.value
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+}
+
+// 主题配置
+const themeOverrides = computed(() => ({
+  common: {
+    primaryColor: '#18a058',
+    primaryColorHover: '#36ad6a',
+    primaryColorPressed: '#0c7a43',
+    borderColor: isDark.value ? '#333' : '#e0e0e6',
+    tableColor: isDark.value ? '#1a1a1a' : '#fff',
+    cardColor: isDark.value ? '#1a1a1a' : '#fff',
+    modalColor: isDark.value ? '#1a1a1a' : '#fff',
+    popoverColor: isDark.value ? '#1a1a1a' : '#fff',
+    bodyColor: isDark.value ? '#0f0f0f' : '#f5f7f9',
+    textColorBase: isDark.value => '#fff' : '#333',
+    textColor1: isDark.value ? '#fff' : '#333',
+    textColor2: isDark.value ? '#ccc' : '#666',
+    textColor3: isDark.value ? '#999' : '#999',
+  }
+}))
 
 // 菜单配置
 function renderIcon(icon: any) {
@@ -130,6 +179,11 @@ const menuOptions = [
     icon: renderIcon(GraphOutline)
   },
   {
+    label: '统计',
+    key: 'stats',
+    icon: renderIcon(StatsOutline)
+  },
+  {
     type: 'divider'
   },
   {
@@ -144,19 +198,16 @@ function handleMenuClick(key: string) {
   router.push({ name: key })
 }
 
-// 主题配置
-const themeOverrides = {
-  common: {
-    primaryColor: '#18a058',
-    primaryColorHover: '#36ad6a',
-    primaryColorPressed: '#0c7a43'
-  }
-}
+// 初始化主题
+onMounted(() => {
+  const savedTheme = localStorage.getItem('theme')
+  isDark.value = savedTheme === 'dark'
+})
 </script>
 
 <style scoped>
 .app-container {
-  height: 100vh;
+  min-height: 100vh;
 }
 
 .logo {
@@ -208,5 +259,36 @@ const themeOverrides = {
   height: calc(100vh - 64px);
   overflow: auto;
   background: #f5f7f9;
+  transition: background 0.3s;
+}
+
+.content.dark-content {
+  background: #0f0f0f;
+}
+
+.theme-toggle {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  padding: 0 12px;
+}
+
+/* 深色模式适配 */
+.dark-mode .n-layout-sider {
+  background: #1a1a1a !important;
+}
+
+.dark-mode .n-layout-header {
+  background: #1a1a1a !important;
+}
+
+.dark-mode .n-card {
+  background: #1a1a1a;
+  border-color: #333;
+}
+
+.dark-mode .n-button {
+  color: #fff;
 }
 </style>

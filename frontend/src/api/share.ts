@@ -1,6 +1,6 @@
-/**
- * 分享 API
- */
+"""
+分享 API 对接
+"""
 import axios from './index'
 
 export interface ShareLink {
@@ -24,37 +24,48 @@ export interface CreateShareRequest {
   password?: string
 }
 
+export interface ShareStats {
+  share_id: string
+  view_count: number
+  unique_visitors: number
+  created_at: string
+}
+
 export const shareApi = {
   // 创建分享链接
-  create: (data: CreateShareRequest) =>
-    api.post<ShareLink>('/api/v1/share', data),
+  create: (data: CreateShareRequest): Promise<ShareLink> =>
+    api.post('/api/v1/share', data),
   
-  // 获取分享链接
-  get: (shareId: string, token: string, password?: string) =>
-    api.get<ShareLink>(`/api/v1/share/${shareId}`, {
+  // 获取分享链接详情
+  get: (shareId: string, token: string, password?: string): Promise<ShareLink> =>
+    api.get(`/api/v1/share/${shareId}`, {
       params: { token, password }
     }),
   
-  // 获取资源的分享链接列表
-  list: (type: string, resourceId: string) =>
-    api.get<ShareLink[]>('/api/v1/share', {
+  // 获取资源的分享列表
+  list: (type: string, resourceId: string): Promise<ShareLink[]> =>
+    api.get('/api/v1/share', {
       params: { type, resource_id: resourceId }
     }),
   
   // 撤销分享
-  revoke: (shareId: string) =>
+  revoke: (shareId: string): Promise<void> =>
     api.delete(`/api/v1/share/${shareId}`),
   
   // 获取分享统计
-  stats: (shareId: string) =>
-    api.get<{ view_count: number; unique_visitors: number }>(
-      `/api/v1/share/${shareId}/stats`
-    ),
+  stats: (shareId: string): Promise<ShareStats> =>
+    api.get(`/api/v1/share/${shareId}/stats`),
   
-  // 公开访问 (无需认证)
-  access: (shareId: string, token: string, password?: string) =>
+  // 公开访问 (不需要认证)
+  access: (shareId: string, token: string, password?: string): Promise<any> =>
     api.get(`/s/${shareId}`, {
       baseURL: '',  // 使用基础 URL
       params: { token, password }
+    }),
+  
+  // 获取嵌入代码
+  getEmbedCode: (shareId: string, token: string): Promise<string> =>
+    api.get(`/api/v1/share/${shareId}/embed`, {
+      params: { token }
     }),
 }
