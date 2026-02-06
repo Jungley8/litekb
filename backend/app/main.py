@@ -12,9 +12,9 @@ import os
 
 # ==================== 配置 ====================
 
-SECRET_KEY = "your-secret-key-change-in-production"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "60"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     
     # 初始化向量库集合
     try:
-        vector_store.create_collection()
+        await vector_store.create_collection()
     except Exception as e:
         print(f"向量库初始化: {e}")
     
@@ -41,10 +41,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
+# CORS - 支持多域名
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # 生产环境应改为具体域名
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -351,9 +351,9 @@ async def search_kb(
     if kb_id not in kb_db:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
-    from app.services.search import hybrid_search
+    from app.services.search import search_service
     
-    results = await hybrid_search.search(
+    results = await search_service.hybrid_search(
         query=request.query,
         kb_id=kb_id,
         strategy=request.strategy,
@@ -480,6 +480,82 @@ async def get_entity(
     from app.services.graph import graph_service
     
     return graph_service.get_entity_relations(kb_id, entity_id)
+
+
+# ==================== 全局搜索 API ====================
+
+@app.post("/api/v1/search")
+async def global_search(
+    request: SearchRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """跨知识库全局搜索"""
+    from app.services.search import search_service
+    
+    all_results = []
+    
+    # 遍历所有知识库
+    for kb_id, kb_info in kb_db.items():
+        try:
+            results = await search_service.hybrid_search(
+                query=request.query,
+                kb_id=kb_id,
+                strategy=request.strategy,
+                top_k=request.top_k,
+                filters=request.filters
+            )
+            
+            all_results.extend([
+                {
+                    "kb_id": kb_id,
+                    "kb_name": kb_info["name"],
+                    "id": r.id,
+                    "title": r.metadata.get("source", "Unknown"),
+                    "content": r.content[:500],
+                    "score": r.score,
+                    "type": r.source_type
+                }
+                for r in results
+            ])
+        except Exception as e:
+            print(f"搜索 KB {kb_id} 失败: {e}")
+    
+    # 按分数排序
+    all_results.sort(key=lambda x: x["score"], reverse=True)
+    
+    return {
+        "results": all_results[:request.top_k * 3],
+        "total_kbs": len(kb_db),
+        "strategy": request.strategy
+    }
+
+
+# ==================== 注册缺失的路由 ====================
+
+# 模型管理 API
+try:
+    from app.api.models import router as models_router
+    app.include_router(models_router, prefix="")
+    print("✅ 模型管理 API 已注册")
+except Exception as e:
+    print(f"⚠️ 模型管理 API 注册失败: {e}")
+
+# 统计 API
+try:
+    from app.api.stats import router as stats_router
+    app.include_router(stats_router, prefix="")
+    print("✅ 统计 API 已注册")
+except Exception as e:
+    print(f"⚠️ 统计 API 注册失败: {e}")
+
+# 分享 API
+try:
+    from app.api.share import router as share_router
+    app.include_router(share_router, prefix="")
+    print("✅ 分享 API 已注册")
+except Exception as e:
+    print(f"⚠️ 分享 API 注册失败: {e}")
+
 
 # ==================== 启动 ====================
 
