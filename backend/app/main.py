@@ -82,7 +82,7 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 初始化数据库
-    from app.db.json_store import json_store
+    from app.db.factory import db
     os.makedirs("./data", exist_ok=True)
     
     # 初始化向量库
@@ -158,7 +158,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ==================== 数据库 ====================
 
-from app.db.json_store import json_store
+from app.db.factory import db
 
 # ==================== 认证依赖 ====================
 
@@ -176,7 +176,7 @@ async def get_current_user(token: str) -> User:
     except JWTError:
         raise credentials_exception
     
-    user_data = json_store.get_user(user_id)
+    user_data = db.get_user(user_id)
     if user_data is None:
         raise credentials_exception
     
@@ -191,7 +191,7 @@ async def root():
 @app.post("/api/v1/auth/register", response_model=User)
 async def register(user: UserCreate):
     """用户注册"""
-    existing = json_store.get_user_by_username(user.username)
+    existing = db.get_user_by_username(user.username)
     if existing:
         raise HTTPException(status_code=400, detail="Username already registered")
     
@@ -202,12 +202,12 @@ async def register(user: UserCreate):
         "email": user.email,
         "hashed_password": hashed,
     }
-    return User(**json_store.create_user(user_data["id"], user_data))
+    return User(**db.create_user(user_data["id"], user_data))
 
 @app.post("/api/v1/auth/login", response_model=Token)
 async def login(user: UserLogin):
     """用户登录"""
-    existing = json_store.get_user_by_username(user.username)
+    existing = db.get_user_by_username(user.username)
     if not existing or not verify_password(user.password, existing.get("hashed_password", "")):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
@@ -230,17 +230,17 @@ async def create_kb(kb: KnowledgeBaseCreate, current_user: User = Depends(get_cu
         "description": kb.description,
         "created_by": current_user.id,
     }
-    return KnowledgeBase(**json_store.create_kb(kb_data["id"], kb_data))
+    return KnowledgeBase(**db.create_kb(kb_data["id"], kb_data))
 
 @app.get("/api/v1/kb", response_model=List[KnowledgeBase])
 async def list_kbs(current_user: User = Depends(get_current_user)):
     """列出知识库"""
-    return [KnowledgeBase(**kb) for kb in json_store.list_kbs()]
+    return [KnowledgeBase(**kb) for kb in db.list_kbs()]
 
 @app.get("/api/v1/kb/{kb_id}", response_model=KnowledgeBase)
 async def get_kb(kb_id: str, current_user: User = Depends(get_current_user)):
     """获取知识库"""
-    kb = json_store.get_kb(kb_id)
+    kb = db.get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     return KnowledgeBase(**kb)
@@ -248,7 +248,7 @@ async def get_kb(kb_id: str, current_user: User = Depends(get_current_user)):
 @app.delete("/api/v1/kb/{kb_id}")
 async def delete_kb(kb_id: str, current_user: User = Depends(get_current_user)):
     """删除知识库"""
-    if not json_store.delete_kb(kb_id):
+    if not db.delete_kb(kb_id):
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     return {"message": "deleted"}
 
@@ -257,7 +257,7 @@ async def delete_kb(kb_id: str, current_user: User = Depends(get_current_user)):
 @app.post("/api/v1/kb/{kb_id}/docs", response_model=Document)
 async def create_doc(kb_id: str, doc: DocumentCreate, current_user: User = Depends(get_current_user)):
     """创建文档"""
-    kb = json_store.get_kb(kb_id)
+    kb = db.get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
@@ -268,17 +268,17 @@ async def create_doc(kb_id: str, doc: DocumentCreate, current_user: User = Depen
         "content": doc.content,
         "metadata": doc.metadata,
     }
-    return Document(**json_store.create_doc(doc_data["id"], doc_data))
+    return Document(**db.create_doc(doc_data["id"], doc_data))
 
 @app.get("/api/v1/kb/{kb_id}/docs", response_model=List[Document])
 async def list_documents(kb_id: str, skip: int = 0, limit: int = 100, current_user: User = Depends(get_current_user)):
     """列出文档"""
-    return [Document(**d) for d in json_store.list_docs(kb_id, skip, limit)]
+    return [Document(**d) for d in db.list_docs(kb_id, skip, limit)]
 
 @app.delete("/api/v1/kb/{kb_id}/docs/{doc_id}")
 async def delete_document(kb_id: str, doc_id: str, current_user: User = Depends(get_current_user)):
     """删除文档"""
-    if not json_store.delete_doc(doc_id):
+    if not db.delete_doc(doc_id):
         raise HTTPException(status_code=404, detail="Document not found")
     return {"message": "deleted"}
 
@@ -287,7 +287,7 @@ async def delete_document(kb_id: str, doc_id: str, current_user: User = Depends(
 @app.post("/api/v1/kb/{kb_id}/search")
 async def search_kb(kb_id: str, request: SearchRequest, current_user: User = Depends(get_current_user)):
     """知识库内搜索"""
-    kb = json_store.get_kb(kb_id)
+    kb = db.get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
@@ -321,7 +321,7 @@ async def global_search(request: SearchRequest, current_user: User = Depends(get
     from app.services.search import search_service
     
     all_results = []
-    for kb in json_store.list_kbs():
+    for kb in db.list_kbs():
         kb_id = kb["id"]
         results = await search_service.hybrid_search(
             query=request.query,
@@ -341,7 +341,7 @@ async def global_search(request: SearchRequest, current_user: User = Depends(get
     
     return {
         "results": all_results[:request.top_k * 3],
-        "total_kbs": len(json_store.list_kbs()),
+        "total_kbs": len(db.list_kbs()),
         "strategy": request.strategy
     }
 
@@ -350,7 +350,7 @@ async def global_search(request: SearchRequest, current_user: User = Depends(get
 @app.post("/api/v1/kb/{kb_id}/chat")
 async def chat_with_kb(kb_id: str, chat: ChatRequest, current_user: User = Depends(get_current_user)):
     """RAG 对话"""
-    kb = json_store.get_kb(kb_id)
+    kb = db.get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
@@ -372,7 +372,7 @@ async def chat_with_kb(kb_id: str, chat: ChatRequest, current_user: User = Depen
 @app.post("/api/v1/kb/{kb_id}/chat/stream")
 async def stream_chat(kb_id: str, chat: ChatRequest, current_user: User = Depends(get_current_user)):
     """流式 RAG 对话 (SSE)"""
-    kb = json_store.get_kb(kb_id)
+    kb = db.get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
@@ -397,7 +397,7 @@ async def stream_chat(kb_id: str, chat: ChatRequest, current_user: User = Depend
 @app.get("/api/v1/kb/{kb_id}/graph")
 async def get_graph(kb_id: str, current_user: User = Depends(get_current_user)):
     """获取知识图谱"""
-    kb = json_store.get_kb(kb_id)
+    kb = db.get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
@@ -407,13 +407,13 @@ async def get_graph(kb_id: str, current_user: User = Depends(get_current_user)):
 @app.post("/api/v1/kb/{kb_id}/graph/build")
 async def build_graph(kb_id: str, rebuild: bool = False, current_user: User = Depends(get_current_user)):
     """构建知识图谱"""
-    kb = json_store.get_kb(kb_id)
+    kb = db.get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     
     from app.services.graph import graph_service
     
-    docs = json_store.list_docs(kb_id)
+    docs = db.list_docs(kb_id)
     stats = {"entities": 0, "relations": 0}
     
     for doc in docs:
