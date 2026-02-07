@@ -1,6 +1,7 @@
 """
 统计 API 端点
 """
+
 from fastapi import APIRouter, Depends
 from typing import Dict, List, Any
 from datetime import datetime, timedelta
@@ -11,23 +12,23 @@ router = APIRouter()
 
 def get_summary(org_id: str = None) -> Dict[str, Any]:
     """获取统计摘要"""
-    from app.models_v2 import (
-        get_session, KnowledgeBase, Document, Conversation, User
-    )
-    
+    from app.models_v2 import get_session, KnowledgeBase, Document, Conversation, User
+
     session = get_session()
     try:
         query = session.query(KnowledgeBase)
         if org_id:
             query = query.filter(KnowledgeBase.organization_id == org_id)
         kb_count = query.count()
-        
+
         doc_count = session.query(Document).count()
         chat_count = session.query(Conversation).count()
-        active_users = session.query(User).filter(
-            User.last_login_at >= datetime.utcnow() - timedelta(days=7)
-        ).count()
-        
+        active_users = (
+            session.query(User)
+            .filter(User.last_login_at >= datetime.utcnow() - timedelta(days=7))
+            .count()
+        )
+
         return {
             "kb_count": kb_count,
             "doc_count": doc_count,
@@ -36,7 +37,7 @@ def get_summary(org_id: str = None) -> Dict[str, Any]:
             "active_users": active_users,
             "api_calls": 2560,  # 从日志计算
         }
-    
+
     finally:
         session.close()
 
@@ -45,14 +46,18 @@ def get_trends(org_id: str = None, days: int = 7) -> List[Dict[str, Any]]:
     """获取使用趋势"""
     trends = []
     today = datetime.utcnow()
-    
+
     for i in range(days):
-        date = (today - timedelta(days=days - 1 - i)).strftime('%Y-%m-%d')
-        trends.append({
-            "date": date,
-            "count": 10 + (i % 7) * 5 + (date == today.strftime('%Y-%m-%d') and 20 or 0)
-        })
-    
+        date = (today - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        trends.append(
+            {
+                "date": date,
+                "count": 10
+                + (i % 7) * 5
+                + (date == today.strftime("%Y-%m-%d") and 20 or 0),
+            }
+        )
+
     return trends
 
 
@@ -91,14 +96,11 @@ def get_heatmap(org_id: str = None, days: int = 28) -> Dict[str, Any]:
     """获取活动热力图"""
     heatmap = {}
     today = datetime.utcnow()
-    
+
     for i in range(days):
-        date = (today - timedelta(days=days - 1 - i)).strftime('%Y-%m-%d')
-        heatmap[date] = {
-            "docs": 5 + (i % 10),
-            "chats": 10 + (i % 15)
-        }
-    
+        date = (today - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        heatmap[date] = {"docs": 5 + (i % 10), "chats": 10 + (i % 15)}
+
     return heatmap
 
 
@@ -146,17 +148,10 @@ async def get_heatmap_endpoint(days: int = Query(28)):
 @router.get("/api/v1/stats/response-times")
 async def get_response_times():
     """获取响应时间统计"""
-    return {
-        "avg": 1.2,
-        "p50": 0.8,
-        "p95": 3.5
-    }
+    return {"avg": 1.2, "p50": 0.8, "p95": 3.5}
 
 
 @router.get("/api/v1/stats/satisfaction")
 async def get_satisfaction():
     """获取满意度"""
-    return {
-        "rate": 0.92,
-        "total": 342
-    }
+    return {"rate": 0.92, "total": 342}

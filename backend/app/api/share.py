@@ -1,6 +1,7 @@
 """
 分享 API 端点
 """
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -11,6 +12,7 @@ router = APIRouter()
 
 class CreateShareRequest(BaseModel):
     """创建分享请求"""
+
     resource_type: str  # "kb" | "doc" | "chat"
     resource_id: str
     title: str
@@ -20,6 +22,7 @@ class CreateShareRequest(BaseModel):
 
 class ShareResponse(BaseModel):
     """分享响应"""
+
     id: str
     token: str
     url: str
@@ -36,10 +39,10 @@ _demo_shares = []
 async def create_share(request: CreateShareRequest):
     """创建分享链接"""
     import secrets
-    
+
     token = secrets.token_urlsafe(16)
     expires_at = datetime.utcnow() + datetime.timedelta(days=request.expires_in_days)
-    
+
     share = {
         "id": secrets.uuid4().hex[:8],
         "token": token,
@@ -53,9 +56,9 @@ async def create_share(request: CreateShareRequest):
         "view_count": 0,
         "is_active": True,
     }
-    
+
     _demo_shares.append(share)
-    
+
     return {
         "id": share["id"],
         "token": token,
@@ -69,11 +72,13 @@ async def create_share(request: CreateShareRequest):
 @router.get("/api/v1/share/{token}")
 async def get_share(token: str):
     """获取分享信息"""
-    share = next((s for s in _demo_shares if s["token"] == token and s["is_active"]), None)
-    
+    share = next(
+        (s for s in _demo_shares if s["token"] == token and s["is_active"]), None
+    )
+
     if not share:
         raise HTTPException(status_code=404, detail="分享链接不存在")
-    
+
     return {
         "title": share["title"],
         "resource_type": share["resource_type"],
@@ -85,15 +90,17 @@ async def get_share(token: str):
 @router.get("/api/v1/share/{token}/content")
 async def get_share_content(token: str, password: str = None):
     """获取分享内容"""
-    share = next((s for s in _demo_shares if s["token"] == token and s["is_active"]), None)
-    
+    share = next(
+        (s for s in _demo_shares if s["token"] == token and s["is_active"]), None
+    )
+
     if not share:
         raise HTTPException(status_code=404, detail="分享链接不存在")
-    
+
     # 检查密码
     if share.get("password") and share["password"] != password:
         raise HTTPException(status_code=401, detail="密码错误")
-    
+
     # TODO: 从数据库获取实际内容
     return {
         "title": share["title"],
@@ -106,11 +113,11 @@ async def get_share_content(token: str, password: str = None):
 async def revoke_share(token: str):
     """撤销分享"""
     share = next((s for s in _demo_shares if s["token"] == token), None)
-    
+
     if share:
         share["is_active"] = False
         return {"message": "分享已撤销"}
-    
+
     raise HTTPException(status_code=404, detail="分享链接不存在")
 
 
@@ -118,10 +125,10 @@ async def revoke_share(token: str):
 async def get_share_stats(token: str):
     """获取分享统计"""
     share = next((s for s in _demo_shares if s["token"] == token), None)
-    
+
     if not share:
         raise HTTPException(status_code=404, detail="分享链接不存在")
-    
+
     return {
         "view_count": share["view_count"],
         "created_at": share["created_at"].isoformat(),
@@ -132,11 +139,13 @@ async def get_share_stats(token: str):
 @router.get("/api/v1/share/{token}/embed")
 async def get_embed_code(token: str):
     """获取嵌入代码"""
-    share = next((s for s in _demo_shares if s["token"] == token and s["is_active"]), None)
-    
+    share = next(
+        (s for s in _demo_shares if s["token"] == token and s["is_active"]), None
+    )
+
     if not share:
         raise HTTPException(status_code=404, detail="分享链接不存在")
-    
+
     return {
         "code": f'<iframe src="/embed/{token}" width="100%" height="600"></iframe>',
     }

@@ -1,6 +1,7 @@
 """
 Token 黑名单中间件
 """
+
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -9,21 +10,21 @@ from app.services.blacklist import is_blacklisted
 
 class TokenBlacklistMiddleware(BaseHTTPMiddleware):
     """Token 黑名单中间件"""
-    
+
     async def dispatch(self, request: Request, call_next):
         # 获取 Authorization 头
         auth_header = request.headers.get("Authorization")
-        
+
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]
-            
+
             # 检查黑名单
             if await is_blacklisted(token):
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    content={"detail": "Token has been revoked"}
+                    content={"detail": "Token has been revoked"},
                 )
-        
+
         return await call_next(request)
 
 
@@ -42,7 +43,7 @@ class RevokeTokenRequest(BaseModel):
 async def revoke_token(request: RevokeTokenRequest):
     """撤销 Token"""
     from app.services.blacklist import add_to_blacklist
-    
+
     await add_to_blacklist(request.token)
     return {"message": "Token revoked successfully"}
 

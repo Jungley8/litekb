@@ -1,6 +1,7 @@
 """
 本地嵌入计算服务
 """
+
 from typing import List, Dict, Optional
 from loguru import logger
 from sentence_transformers import SentenceTransformer
@@ -8,7 +9,7 @@ from sentence_transformers import SentenceTransformer
 
 class LocalEmbedding:
     """本地嵌入模型"""
-    
+
     SUPPORTED_MODELS = {
         "BAAI/bge-large-zh": 1024,
         "BAAI/bge-base-zh": 768,
@@ -16,7 +17,7 @@ class LocalEmbedding:
         "shibing624/text2vec-base-chinese": 768,
         "GanymedeNil/text2vec-large-chinese": 1024,
     }
-    
+
     def __init__(
         self,
         model_name: str = "BAAI/bge-large-zh",
@@ -27,23 +28,20 @@ class LocalEmbedding:
         self.device = device
         self.normalize = normalize
         self._model = None
-        
+
     @property
     def model(self):
         """懒加载模型"""
         if self._model is None:
             logger.info(f"Loading embedding model: {self.model_name}")
-            self._model = SentenceTransformer(
-                self.model_name,
-                device=self.device
-            )
+            self._model = SentenceTransformer(self.model_name, device=self.device)
         return self._model
-    
+
     @property
     def dimension(self) -> int:
         """返回向量维度"""
         return self.SUPPORTED_MODELS.get(self.model_name, 768)
-    
+
     def encode(
         self,
         texts: List[str],
@@ -62,11 +60,11 @@ class LocalEmbedding:
         except Exception as e:
             logger.error(f"Embedding encode failed: {e}")
             raise
-    
+
     def encode_single(self, text: str) -> List[float]:
         """编码单个文本"""
         return self.encode([text], batch_size=1)[0]
-    
+
     def encode_query(self, query: str) -> List[float]:
         """编码查询 (BGE 需要加 query 前缀)"""
         prefixed_query = f"为检索任务生成表示: {query}"
@@ -83,11 +81,11 @@ def get_embedding_model(
 ) -> "LocalEmbedding":
     """获取嵌入模型"""
     global _local_embedding
-    
+
     if _local_embedding is None:
         model = model_name or "BAAI/bge-large-zh"
         _local_embedding = LocalEmbedding(model_name=model)
-    
+
     return _local_embedding
 
 
@@ -100,7 +98,7 @@ async def compute_embeddings(
     if use_api:
         # 使用 OpenAI Embedding API
         from app.services.vector import embedding_api
-        
+
         return await embedding_api.embed_texts(texts)
     else:
         # 使用本地模型

@@ -1,7 +1,19 @@
 """
 数据库模型 - 完整 ORM 定义
 """
-from sqlalchemy import create_engine, Column, String, Text, Integer, Float, DateTime, Boolean, JSON, ForeignKey
+
+from sqlalchemy import (
+    create_engine,
+    Column,
+    String,
+    Text,
+    Integer,
+    Float,
+    DateTime,
+    Boolean,
+    JSON,
+    ForeignKey,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -16,10 +28,12 @@ def gen_uuid():
 
 # ========== 用户相关 ==========
 
+
 class User(Base):
     """用户"""
+
     __tablename__ = "users"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     username = Column(String(100), unique=True, nullable=False)
     email = Column(String(255), unique=True)
@@ -30,30 +44,33 @@ class User(Base):
     last_login_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     relationships = relationship("OrganizationMember", back_populates="user")
     api_keys = relationship("APIKey", back_populates="user")
 
 
 class UserSetting(Base):
     """用户设置"""
+
     __tablename__ = "user_settings"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     user_id = Column(String(36), ForeignKey("users.id"), unique=True, nullable=False)
     settings = Column(JSON, default={})
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     user = relationship("User", back_populates="settings")
 
 
 # ========== 组织相关 ==========
 
+
 class Organization(Base):
     """组织"""
+
     __tablename__ = "organizations"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     name = Column(String(200), nullable=False)
     slug = Column(String(200), unique=True, nullable=False)
@@ -64,30 +81,32 @@ class Organization(Base):
     settings = Column(JSON, default={})
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     owner = relationship("User")
     members = relationship("OrganizationMember", back_populates="organization")
 
 
 class OrganizationMember(Base):
     """组织成员"""
+
     __tablename__ = "organization_members"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     org_id = Column(String(36), ForeignKey("organizations.id"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     role = Column(String(50), default="member")  # owner/admin/member/viewer
     invited_by = Column(String(36))
     joined_at = Column(DateTime, default=datetime.utcnow)
-    
+
     organization = relationship("Organization", back_populates="members")
     user = relationship("User", back_populates="relationships")
 
 
 class OrgInvitation(Base):
     """组织邀请"""
+
     __tablename__ = "org_invitations"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     org_id = Column(String(36), ForeignKey("organizations.id"), nullable=False)
     email = Column(String(255), nullable=False)
@@ -101,10 +120,12 @@ class OrgInvitation(Base):
 
 # ========== 认证相关 ==========
 
+
 class APIKey(Base):
     """API Keys"""
+
     __tablename__ = "api_keys"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     key_hash = Column(String(64), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
@@ -115,14 +136,15 @@ class APIKey(Base):
     expires_at = Column(DateTime)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     user = relationship("User", back_populates="api_keys")
 
 
 class RevokedToken(Base):
     """Token 黑名单"""
+
     __tablename__ = "revoked_tokens"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     token_hash = Column(String(64), unique=True, nullable=False)
     user_id = Column(String(36))
@@ -133,10 +155,12 @@ class RevokedToken(Base):
 
 # ========== 知识库相关 ==========
 
+
 class KnowledgeBase(Base):
     """知识库"""
+
     __tablename__ = "knowledge_bases"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     org_id = Column(String(36), ForeignKey("organizations.id"))
     name = Column(String(200), nullable=False)
@@ -150,7 +174,7 @@ class KnowledgeBase(Base):
     created_by = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     documents = relationship("Document", back_populates="knowledge_base")
     conversations = relationship("Conversation", back_populates="knowledge_base")
     entities = relationship("GraphEntity", back_populates="knowledge_base")
@@ -158,12 +182,15 @@ class KnowledgeBase(Base):
 
 class KBActivity(Base):
     """知识库活动"""
+
     __tablename__ = "kb_activities"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     kb_id = Column(String(36), ForeignKey("knowledge_bases.id"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"))
-    action = Column(String(100), nullable=False)  # create_doc/update_doc/delete_doc/chat/search
+    action = Column(
+        String(100), nullable=False
+    )  # create_doc/update_doc/delete_doc/chat/search
     resource_type = Column(String(50))
     resource_id = Column(String(36))
     metadata = Column(JSON)
@@ -172,10 +199,12 @@ class KBActivity(Base):
 
 # ========== 文档相关 ==========
 
+
 class Document(Base):
     """文档"""
+
     __tablename__ = "documents"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     kb_id = Column(String(36), ForeignKey("knowledge_bases.id"), nullable=False)
     title = Column(String(500), nullable=False)
@@ -192,15 +221,16 @@ class Document(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     indexed_at = Column(DateTime)
-    
+
     knowledge_base = relationship("KnowledgeBase", back_populates="documents")
     chunks = relationship("DocumentChunk", back_populates="document")
 
 
 class DocumentChunk(Base):
     """文档分块"""
+
     __tablename__ = "document_chunks"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     doc_id = Column(String(36), ForeignKey("documents.id"), nullable=False)
     kb_id = Column(String(36), ForeignKey("knowledge_bases.id"), nullable=False)
@@ -210,16 +240,18 @@ class DocumentChunk(Base):
     metadata = Column(JSON, default={})
     embedding_id = Column(String(100))
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     document = relationship("Document", back_populates="chunks")
 
 
 # ========== 对话相关 ==========
 
+
 class Conversation(Base):
     """对话"""
+
     __tablename__ = "conversations"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     kb_id = Column(String(36), ForeignKey("knowledge_bases.id"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
@@ -229,15 +261,16 @@ class Conversation(Base):
     token_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     knowledge_base = relationship("KnowledgeBase", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")
 
 
 class Message(Base):
     """对话消息"""
+
     __tablename__ = "messages"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     conversation_id = Column(String(36), ForeignKey("conversations.id"), nullable=False)
     role = Column(String(20), nullable=False)  # user/assistant/system
@@ -245,16 +278,18 @@ class Message(Base):
     token_count = Column(Integer)
     sources = Column(JSON)  # 引用的文档来源
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     conversation = relationship("Conversation", back_populates="messages")
 
 
 # ========== 知识图谱相关 ==========
 
+
 class GraphEntity(Base):
     """图谱实体"""
+
     __tablename__ = "graph_entities"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     kb_id = Column(String(36), ForeignKey("knowledge_bases.id"), nullable=False)
     doc_id = Column(String(36), ForeignKey("documents.id"))
@@ -266,21 +301,22 @@ class GraphEntity(Base):
     confidence = Column(Float, default=1.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     knowledge_base = relationship("KnowledgeBase", back_populates="entities")
-    
-    outgoing = relationship("GraphRelation", 
-                           foreign_keys="GraphRelation.source_id", 
-                           back_populates="source")
-    incoming = relationship("GraphRelation", 
-                           foreign_keys="GraphRelation.target_id", 
-                           back_populates="target")
+
+    outgoing = relationship(
+        "GraphRelation", foreign_keys="GraphRelation.source_id", back_populates="source"
+    )
+    incoming = relationship(
+        "GraphRelation", foreign_keys="GraphRelation.target_id", back_populates="target"
+    )
 
 
 class GraphRelation(Base):
     """图谱关系"""
+
     __tablename__ = "graph_relations"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     kb_id = Column(String(36), ForeignKey("knowledge_bases.id"), nullable=False)
     source_id = Column(String(36), ForeignKey("graph_entities.id"), nullable=False)
@@ -291,17 +327,23 @@ class GraphRelation(Base):
     confidence = Column(Float, default=1.0)
     doc_id = Column(String(36), ForeignKey("documents.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
-    
-    source = relationship("GraphEntity", foreign_keys=[source_id], back_populates="outgoing")
-    target = relationship("GraphEntity", foreign_keys=[target_id], back_populates="incoming")
+
+    source = relationship(
+        "GraphEntity", foreign_keys=[source_id], back_populates="outgoing"
+    )
+    target = relationship(
+        "GraphEntity", foreign_keys=[target_id], back_populates="incoming"
+    )
 
 
 # ========== 分享相关 ==========
 
+
 class Share(Base):
     """分享链接"""
+
     __tablename__ = "shares"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     token = Column(String(100), unique=True, nullable=False)
     resource_type = Column(String(50), nullable=False)  # kb/doc/conv/search
@@ -319,17 +361,21 @@ class Share(Base):
 
 # ========== 任务相关 ==========
 
+
 class ImportJob(Base):
     """导入任务"""
+
     __tablename__ = "import_jobs"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     kb_id = Column(String(36), ForeignKey("knowledge_bases.id"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     source_type = Column(String(50), nullable=False)  # file/url/notion
     source_url = Column(String(1000))
     file_name = Column(String(500))
-    status = Column(String(50), default="pending")  # pending/processing/completed/failed
+    status = Column(
+        String(50), default="pending"
+    )  # pending/processing/completed/failed
     progress = Column(Integer, default=0)
     total_items = Column(Integer)
     processed_items = Column(Integer)
@@ -341,8 +387,9 @@ class ImportJob(Base):
 
 class ExportJob(Base):
     """导出任务"""
+
     __tablename__ = "export_jobs"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     kb_id = Column(String(36), ForeignKey("knowledge_bases.id"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
@@ -358,10 +405,12 @@ class ExportJob(Base):
 
 # ========== 插件相关 ==========
 
+
 class Plugin(Base):
     """插件"""
+
     __tablename__ = "plugins"
-    
+
     id = Column(String(36), primary_key=True, default=gen_uuid)
     name = Column(String(100), unique=True, nullable=False)
     version = Column(String(20), nullable=False)
@@ -375,10 +424,12 @@ class Plugin(Base):
 
 # ========== 统计相关 ==========
 
+
 class Stat(Base):
     """统计"""
+
     __tablename__ = "stats"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     stat_type = Column(String(100), nullable=False)  # api_calls/searches/chats/docs
     stat_key = Column(String(200), nullable=False)
@@ -389,8 +440,9 @@ class Stat(Base):
 
 class AuditLog(Base):
     """审计日志"""
+
     __tablename__ = "audit_logs"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(36), ForeignKey("users.id"))
     org_id = Column(String(36), ForeignKey("organizations.id"))
@@ -412,9 +464,14 @@ def get_engine():
     global _engine
     if _engine is None:
         from app.config import settings
+
         _engine = create_engine(
             settings.database_url,
-            connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {}
+            connect_args=(
+                {"check_same_thread": False}
+                if "sqlite" in settings.database_url
+                else {}
+            ),
         )
     return _engine
 

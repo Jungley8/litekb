@@ -1,10 +1,10 @@
 """
 提示词管理器 - Langfuse 集成
 """
+
 import os
 from typing import Dict, Any, Optional, List
 from loguru import logger
-
 
 # 默认提示词模板
 DEFAULT_PROMPTS = {
@@ -23,7 +23,6 @@ DEFAULT_PROMPTS = {
 3. 不确定时说明""",
         "description": "RAG 基础提示词",
     },
-    
     "rag_contextual": {
         "prompt": """你是知识库助手。基于上下文和对话历史回答问题。
 
@@ -41,7 +40,6 @@ DEFAULT_PROMPTS = {
 3. 保持对话连贯""",
         "description": "带上下文的 RAG",
     },
-    
     "rag_graph": {
         "prompt": """你是知识库助手。结合知识图谱和文档内容回答问题。
 
@@ -58,7 +56,6 @@ DEFAULT_PROMPTS = {
 2. 标注信息来源""",
         "description": "图谱增强 RAG",
     },
-    
     # 文件解析
     "doc_summarize": {
         "prompt": """请为以下文档生成摘要：
@@ -73,7 +70,6 @@ DEFAULT_PROMPTS = {
 摘要：""",
         "description": "文档摘要",
     },
-    
     "doc_chunk": {
         "prompt": """请将以下文档分割成语义完整的 chunks：
 
@@ -87,7 +83,6 @@ DEFAULT_PROMPTS = {
 Chunks：""",
         "description": "文档分块",
     },
-    
     # 图谱抽取
     "entity_extraction": {
         "prompt": """从以下文本中提取实体，以 JSON 格式返回。
@@ -102,12 +97,10 @@ Chunks：""",
 返回 JSON：""",
         "description": "实体抽取",
     },
-    
     "entity_extraction_system": {
         "prompt": "你是一个实体抽取助手，只返回 JSON",
         "description": "实体抽取系统提示",
     },
-    
     "relation_extraction": {
         "prompt": """从以下文本中提取实体之间的关系，以 JSON 格式返回。
 
@@ -124,12 +117,10 @@ Chunks：""",
 返回 JSON：""",
         "description": "关系抽取",
     },
-    
     "relation_extraction_system": {
         "prompt": "你是一个关系抽取助手，只返回 JSON",
         "description": "关系抽取系统提示",
     },
-    
     # 图谱查询
     "graph_query": {
         "prompt": """基于知识图谱回答问题。
@@ -143,7 +134,6 @@ Chunks：""",
 请综合以上信息回答：{question}""",
         "description": "图谱查询",
     },
-    
     # 默认 RAG
     "rag_default": {
         "prompt": """你是一个知识库助手。请根据提供的上下文回答用户的问题。
@@ -154,7 +144,6 @@ Chunks：""",
 3. 回答要简洁、有条理""",
         "description": "默认 RAG 提示词",
     },
-    
     "doc_chunk": {
         "prompt": """请将以下文档分割成语义完整的 chunks：
 
@@ -168,7 +157,6 @@ Chunks：""",
 Chunks：""",
         "description": "文档分块",
     },
-    
     # 图谱
     "entity_extraction": {
         "prompt": """从以下文本中提取实体和关系：
@@ -183,7 +171,6 @@ Chunks：""",
 实体：""",
         "description": "实体抽取",
     },
-    
     "relation_extraction": {
         "prompt": """分析以下文本中的实体关系：
 
@@ -195,7 +182,6 @@ Chunks：""",
 请为每对相关实体标注关系类型。""",
         "description": "关系抽取",
     },
-    
     "graph_query": {
         "prompt": """基于知识图谱回答问题。
 
@@ -213,22 +199,23 @@ Chunks：""",
 
 class PromptManager:
     """提示词管理器 - 集成 Langfuse"""
-    
+
     def __init__(self):
         self._langfuse_client = None
         self._enabled = False
         self._init_langfuse()
-    
+
     def _init_langfuse(self):
         """初始化 Langfuse"""
         self._enabled = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
-        
+
         if not self._enabled:
             logger.info("PromptManager: Langfuse disabled, using defaults")
             return
-        
+
         try:
             from langfuse import Langfuse
+
             self._langfuse_client = Langfuse(
                 public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
                 secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
@@ -238,20 +225,20 @@ class PromptManager:
         except Exception as e:
             logger.warning(f"PromptManager: Langfuse init failed: {e}")
             self._enabled = False
-    
+
     def get_prompt(self, name: str, variables: Dict[str, str] = None) -> str:
         """
         获取并渲染提示词
-        
+
         Args:
             name: 提示词名称 (如 rag_naive, entity_extraction)
             variables: 变量替换
-            
+
         Returns:
             渲染后的提示词
         """
         prompt_text = None
-        
+
         # 1. 优先从 Langfuse 获取
         if self._enabled and self._langfuse_client:
             try:
@@ -261,7 +248,7 @@ class PromptManager:
                     logger.debug(f"Prompt from Langfuse: {name}")
             except Exception as e:
                 logger.debug(f"Langfuse prompt not found: {name}")
-        
+
         # 2. 回退到默认模板
         if not prompt_text:
             if name in DEFAULT_PROMPTS:
@@ -270,15 +257,15 @@ class PromptManager:
             else:
                 logger.warning(f"Prompt not found: {name}")
                 return ""
-        
+
         # 3. 渲染变量
         if variables:
             for key, value in variables.items():
                 prompt_text = prompt_text.replace(f"{{{{{key}}}}}", str(value))
                 prompt_text = prompt_text.replace(f"${{{key}}}", str(value))
-        
+
         return prompt_text
-    
+
     def get_raw_prompt(self, name: str) -> Optional[str]:
         """获取原始提示词"""
         if self._enabled and self._langfuse_client:
@@ -287,72 +274,77 @@ class PromptManager:
                 return prompt.prompt
             except:
                 pass
-        
+
         if name in DEFAULT_PROMPTS:
             return DEFAULT_PROMPTS[name]["prompt"]
-        
+
         return None
-    
+
     def sync_to_langfuse(self, name: str) -> bool:
         """同步默认提示词到 Langfuse"""
         if not self._enabled:
             return False
-        
+
         if name not in DEFAULT_PROMPTS:
             return False
-        
+
         try:
             prompt_data = DEFAULT_PROMPTS[name]
             self._langfuse_client.create_prompt(
                 name=name,
                 prompt=prompt_data["prompt"],
-                config={"description": prompt_data["description"]}
+                config={"description": prompt_data["description"]},
             )
             logger.info(f"Synced prompt to Langfuse: {name}")
             return True
         except Exception as e:
             logger.error(f"Sync prompt failed: {e}")
             return False
-    
+
     def sync_all_to_langfuse(self):
         """同步所有默认提示词到 Langfuse"""
         if not self._enabled:
             logger.warning("Langfuse not enabled")
             return
-        
+
         for name in DEFAULT_PROMPTS:
             self.sync_to_langfuse(name)
-        
+
         logger.info("All prompts synced to Langfuse")
-    
+
     def list_available_prompts(self) -> List[Dict]:
         """列出可用提示词"""
         prompts = []
-        
+
         # Langfuse 提示词
         if self._enabled and self._langfuse_client:
             try:
                 from langfuse import Langfuse
+
                 all_prompts = self._langfuse_client.get_prompts()
                 for p in all_prompts.data:
-                    prompts.append({
-                        "name": p.name,
-                        "version": p.version,
-                        "source": "langfuse",
-                    })
+                    prompts.append(
+                        {
+                            "name": p.name,
+                            "version": p.version,
+                            "source": "langfuse",
+                        }
+                    )
             except Exception as e:
                 logger.debug(f"List Langfuse prompts failed: {e}")
-        
+
         # 默认提示词
         for name, config in DEFAULT_PROMPTS.items():
             if not any(p["name"] == name for p in prompts):
-                prompts.append({
-                    "name": name,
-                    "version": 1,
-                    "source": "default",
-                    "description": config["description"],
-                })
-        
+                prompts.append(
+                    {
+                        "name": name,
+                        "version": 1,
+                        "source": "default",
+                        "description": config["description"],
+                    }
+                )
+
         return prompts
 
 
@@ -361,6 +353,7 @@ prompt_manager = PromptManager()
 
 
 # ============== 便捷函数 =============
+
 
 def get_prompt(name: str, variables: Dict[str, str] = None) -> str:
     """获取提示词"""
@@ -381,14 +374,14 @@ def rag_prompt(
 ) -> str:
     """获取 RAG 提示词"""
     prompt_name = f"rag_{mode}"
-    
+
     variables = {
         "question": question,
         "context": context,
         "history": history or "无",
         "graph_context": graph_context or "无",
     }
-    
+
     return get_prompt(prompt_name, variables)
 
 
@@ -399,16 +392,22 @@ def entity_extraction_prompt(text: str) -> str:
 
 def summarize_prompt(content: str, max_length: str = "200") -> str:
     """摘要提示词"""
-    return get_prompt("doc_summarize", {
-        "content": content,
-        "max_length": max_length,
-    })
+    return get_prompt(
+        "doc_summarize",
+        {
+            "content": content,
+            "max_length": max_length,
+        },
+    )
 
 
 def graph_query_prompt(question: str, graph_result: str, doc_result: str) -> str:
     """图谱查询提示词"""
-    return get_prompt("graph_query", {
-        "question": question,
-        "graph_result": graph_result,
-        "doc_result": doc_result,
-    })
+    return get_prompt(
+        "graph_query",
+        {
+            "question": question,
+            "graph_result": graph_result,
+            "doc_result": doc_result,
+        },
+    )

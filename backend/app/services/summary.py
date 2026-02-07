@@ -1,6 +1,7 @@
 """
 RAG 摘要生成服务
 """
+
 from typing import Optional, List, Dict
 from loguru import logger
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from dataclasses import dataclass
 @dataclass
 class DocumentSummary:
     """文档摘要"""
+
     doc_id: str
     title: str
     summary: str
@@ -19,10 +21,10 @@ class DocumentSummary:
 
 class SummaryGenerator:
     """摘要生成器"""
-    
-    def __init__(self, llm_client = None):
+
+    def __init__(self, llm_client=None):
         self.llm = llm_client
-    
+
     async def generate_summary(
         self,
         doc_id: str,
@@ -31,7 +33,7 @@ class SummaryGenerator:
         max_length: int = 500,
     ) -> DocumentSummary:
         """为文档生成摘要"""
-        
+
         prompt = f"""请为以下文档生成摘要：
 
 标题: {title}
@@ -52,7 +54,7 @@ JSON 格式返回:
   "entities": ["...", "..."],
   "categories": ["..."]
 }}"""
-        
+
         try:
             if self.llm:
                 response = await self.llm.agenerate(prompt)
@@ -60,11 +62,11 @@ JSON 格式返回:
             else:
                 # 使用模拟数据
                 return self._mock_summary(doc_id, title)
-                
+
         except Exception as e:
             logger.error(f"Generate summary failed: {e}")
             return self._mock_summary(doc_id, title)
-    
+
     def _parse_response(
         self,
         doc_id: str,
@@ -73,7 +75,7 @@ JSON 格式返回:
     ) -> DocumentSummary:
         """解析 LLM 响应"""
         import json
-        
+
         try:
             data = json.loads(response)
             return DocumentSummary(
@@ -86,7 +88,7 @@ JSON 格式返回:
             )
         except json.JSONDecodeError:
             return self._mock_summary(doc_id, title)
-    
+
     def _mock_summary(
         self,
         doc_id: str,
@@ -101,14 +103,14 @@ JSON 格式返回:
             entities=[title, "技术文档", "相关主题"],
             categories=["技术", "文档"],
         )
-    
+
     async def generate_batch_summaries(
         self,
         documents: List[Dict],
     ) -> List[DocumentSummary]:
         """批量生成摘要"""
         summaries = []
-        
+
         for doc in documents:
             summary = await self.generate_summary(
                 doc_id=doc["id"],
@@ -116,7 +118,7 @@ JSON 格式返回:
                 content=doc.get("content", ""),
             )
             summaries.append(summary)
-        
+
         return summaries
 
 

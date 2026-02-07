@@ -1,6 +1,7 @@
 """
 Ollama 本地模型客户端
 """
+
 from typing import List, Dict, Optional, AsyncGenerator
 from loguru import logger
 import httpx
@@ -8,7 +9,7 @@ import httpx
 
 class OllamaClient:
     """Ollama 客户端"""
-    
+
     SUPPORTED_MODELS = [
         "llama3.2",
         "llama3.1",
@@ -22,7 +23,7 @@ class OllamaClient:
         "gemma2",
         "phi3",
     ]
-    
+
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
@@ -32,28 +33,28 @@ class OllamaClient:
         self.timeout = timeout
         self._client = None
         self._async_client = None
-    
+
     @property
     def client(self):
         """同步客户端"""
         if self._client is None:
             self._client = httpx.Client(timeout=self.timeout)
         return self._client
-    
+
     @property
     async def async_client(self):
         """异步客户端"""
         if self._async_client is None:
             self._async_client = httpx.AsyncClient(timeout=self.timeout)
         return self._async_client
-    
+
     async def list_models(self) -> List[Dict]:
         """列出可用模型"""
         try:
             async with self.async_client as client:
                 response = await client.get(f"{self.base_url}/api/tags")
                 models = response.json().get("models", [])
-                
+
                 return [
                     {
                         "name": m["name"],
@@ -65,8 +66,10 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"List Ollama models failed: {e}")
             return []
-    
-    async def pull_model(self, model: str, stream: bool = True) -> AsyncGenerator[str, None]:
+
+    async def pull_model(
+        self, model: str, stream: bool = True
+    ) -> AsyncGenerator[str, None]:
         """拉取模型"""
         async with self.async_client as client:
             async with client.stream(
@@ -76,7 +79,7 @@ class OllamaClient:
             ) as response:
                 async for chunk in response.aiter_lines():
                     yield chunk
-    
+
     async def generate(
         self,
         prompt: str,
@@ -87,7 +90,7 @@ class OllamaClient:
         stream: bool = False,
     ) -> str:
         """生成文本 (非流式)"""
-        
+
         payload = {
             "model": model,
             "prompt": prompt,
@@ -97,10 +100,10 @@ class OllamaClient:
             },
             "stream": False,
         }
-        
+
         if system:
             payload["system"] = system
-        
+
         try:
             async with self.async_client as client:
                 response = await client.post(
@@ -112,7 +115,7 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Ollama generate failed: {e}")
             raise
-    
+
     async def generate_stream(
         self,
         prompt: str,
@@ -122,7 +125,7 @@ class OllamaClient:
         max_tokens: int = 2048,
     ) -> AsyncGenerator[str, None]:
         """生成文本 (流式)"""
-        
+
         payload = {
             "model": model,
             "prompt": prompt,
@@ -132,10 +135,10 @@ class OllamaClient:
             },
             "stream": True,
         }
-        
+
         if system:
             payload["system"] = system
-        
+
         try:
             async with self.async_client as client:
                 async with client.stream(
@@ -145,13 +148,14 @@ class OllamaClient:
                 ) as response:
                     async for line in response.aiter_lines():
                         import json
+
                         data = json.loads(line)
                         if "response" in data:
                             yield data["response"]
         except Exception as e:
             logger.error(f"Ollama stream failed: {e}")
             raise
-    
+
     async def chat(
         self,
         messages: List[Dict[str, str]],
@@ -161,7 +165,7 @@ class OllamaClient:
         stream: bool = False,
     ) -> str:
         """聊天完成 (非流式)"""
-        
+
         payload = {
             "model": model,
             "messages": messages,
@@ -171,7 +175,7 @@ class OllamaClient:
             },
             "stream": False,
         }
-        
+
         try:
             async with self.async_client as client:
                 response = await client.post(
@@ -183,7 +187,7 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Ollama chat failed: {e}")
             raise
-    
+
     async def chat_stream(
         self,
         messages: List[Dict[str, str]],
@@ -192,7 +196,7 @@ class OllamaClient:
         max_tokens: int = 2048,
     ) -> AsyncGenerator[str, None]:
         """聊天完成 (流式)"""
-        
+
         payload = {
             "model": model,
             "messages": messages,
@@ -202,7 +206,7 @@ class OllamaClient:
             },
             "stream": True,
         }
-        
+
         try:
             async with self.async_client as client:
                 async with client.stream(
@@ -212,21 +216,22 @@ class OllamaClient:
                 ) as response:
                     async for line in response.aiter_lines():
                         import json
+
                         data = json.loads(line)
                         if "message" in data:
                             yield data["message"].get("content", "")
         except Exception as e:
             logger.error(f"Ollama chat stream failed: {e}")
             raise
-    
+
     async def embed(self, text: str, model: str = "nomic-embed-text") -> List[float]:
         """生成嵌入"""
-        
+
         payload = {
             "model": model,
             "prompt": text,
         }
-        
+
         try:
             async with self.async_client as client:
                 response = await client.post(
@@ -238,7 +243,7 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Ollama embed failed: {e}")
             raise
-    
+
     async def close(self):
         """关闭客户端"""
         if self._client:

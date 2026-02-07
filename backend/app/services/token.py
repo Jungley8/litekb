@@ -1,12 +1,12 @@
 """
 Token 服务
 """
+
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from loguru import logger
 from passlib.context import CryptContext
-
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -33,14 +33,14 @@ def create_access_token(
 ) -> str:
     """创建访问令牌"""
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     to_encode.update({"exp": expire, "type": "access"})
-    
+
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -51,14 +51,14 @@ def create_refresh_token(
 ) -> str:
     """创建刷新令牌"""
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    
+
     to_encode.update({"exp": expire, "type": "refresh"})
-    
+
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -76,13 +76,13 @@ def decode_token(token: str) -> Optional[dict]:
 def refresh_access_token(refresh_token: str) -> Optional[tuple]:
     """使用刷新令牌获取新的访问令牌"""
     payload = decode_token(refresh_token)
-    
+
     if not payload or payload.get("type") != "refresh":
         return None
-    
+
     user_id = payload.get("sub")
     if not user_id:
         return None
-    
+
     new_access_token = create_access_token({"sub": user_id})
     return new_access_token, create_refresh_token({"sub": user_id})

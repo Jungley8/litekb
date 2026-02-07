@@ -1,6 +1,7 @@
 """
 自动追踪中间件
 """
+
 from typing import Callable, Dict, Optional
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -58,7 +59,7 @@ class TracingMiddleware(BaseHTTPMiddleware):
                     "request_received",
                     {
                         "body_size": request.headers.get("content-length", 0),
-                    }
+                    },
                 )
 
             # 执行请求
@@ -73,14 +74,16 @@ class TracingMiddleware(BaseHTTPMiddleware):
                     {
                         "status_code": response.status_code,
                         "duration_ms": duration,
-                    }
+                    },
                 )
 
                 # 结束追踪
-                trace.end({
-                    "status_code": response.status_code,
-                    "duration_ms": duration,
-                })
+                trace.end(
+                    {
+                        "status_code": response.status_code,
+                        "duration_ms": duration,
+                    }
+                )
 
             # 记录慢请求
             if duration > 5000:  # > 5s
@@ -100,13 +103,11 @@ class TracingMiddleware(BaseHTTPMiddleware):
                     {
                         "error": str(e),
                         "duration_ms": duration,
-                    }
+                    },
                 )
                 trace.end({"error": True})
 
-            logger.error(
-                f"[Request Error] {request.method} {request.url.path}: {e}"
-            )
+            logger.error(f"[Request Error] {request.method} {request.url.path}: {e}")
 
             return JSONResponse(
                 status_code=500,
@@ -154,10 +155,12 @@ class RAGTracing:
                 results = await func()
 
                 # 结束检索
-                retrieval_span.end({
-                    "results_count": len(results),
-                    "duration_ms": (time.time() - start_time) * 1000,
-                })
+                retrieval_span.end(
+                    {
+                        "results_count": len(results),
+                        "duration_ms": (time.time() - start_time) * 1000,
+                    }
+                )
 
                 # 生成阶段
                 generation_span = trace.span(
@@ -180,12 +183,14 @@ class RAGTracing:
     ):
         """结束生成"""
         if generation_span:
-            generation_span.end({
-                "completion_length": len(completion) if completion else 0,
-                "model": model,
-                "input_tokens": usage.get("input_tokens", 0) if usage else 0,
-                "output_tokens": usage.get("output_tokens", 0) if usage else 0,
-            })
+            generation_span.end(
+                {
+                    "completion_length": len(completion) if completion else 0,
+                    "model": model,
+                    "input_tokens": usage.get("input_tokens", 0) if usage else 0,
+                    "output_tokens": usage.get("output_tokens", 0) if usage else 0,
+                }
+            )
 
 
 # 全局 RAG 追踪器

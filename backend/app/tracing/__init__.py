@@ -1,6 +1,7 @@
 """
 Tracing 模块 - Langfuse 原生 API
 """
+
 from app.tracing.langfuse import langfuse_tracing, LangfuseTracing
 from app.tracing.decorators import (
     llm_tracker,
