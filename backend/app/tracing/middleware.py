@@ -9,7 +9,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import time
 from loguru import logger
 
-from app.tracing.langfuse import langfuse
+try:
+    from app.tracing.langfuse import langfuse
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    LANGFUSE_AVAILABLE = False
+    langfuse = None
 
 
 class TracingMiddleware(BaseHTTPMiddleware):
@@ -42,7 +47,7 @@ class TracingMiddleware(BaseHTTPMiddleware):
 
         try:
             # 创建追踪
-            if langfuse.enabled:
+            if LANGFUSE_AVAILABLE and langfuse.enabled:
                 trace = langfuse.create_trace(
                     name=f"{request.method} {request.url.path}",
                     metadata={
@@ -68,7 +73,7 @@ class TracingMiddleware(BaseHTTPMiddleware):
             duration = (time.time() - start_time) * 1000
 
             # 记录响应
-            if langfuse.enabled:
+            if LANGFUSE_AVAILABLE and langfuse.enabled:
                 trace.event(
                     "response_sent",
                     {
@@ -97,7 +102,7 @@ class TracingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             duration = (time.time() - start_time) * 1000
 
-            if langfuse.enabled and trace:
+            if LANGFUSE_AVAILABLE and langfuse.enabled and trace:
                 trace.event(
                     "error",
                     {
@@ -121,6 +126,7 @@ class RAGTracing:
 
     def __init__(self):
         self.langfuse = langfuse
+        self.enabled = LANGFUSE_AVAILABLE
 
     async def trace_rag_query(
         self,
@@ -130,6 +136,9 @@ class RAGTracing:
         func,
     ):
         """追踪 RAG 查询"""
+        if not self.enabled:
+            return await func()
+
         start_time = time.time()
         trace = None
         retrieval_span = None
