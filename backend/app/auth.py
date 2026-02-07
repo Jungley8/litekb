@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, Header, status
-from sqlalchemy.orm import Session
 import secrets
 import hashlib
 

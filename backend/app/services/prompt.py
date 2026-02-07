@@ -272,7 +272,7 @@ class PromptManager:
             try:
                 prompt = self._langfuse_client.get_prompt(name=name)
                 return prompt.prompt
-            except:
+            except Exception:
                 pass
 
         if name in DEFAULT_PROMPTS:

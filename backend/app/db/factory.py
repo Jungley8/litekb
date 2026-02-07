@@ -7,7 +7,6 @@ from loguru import logger
 
 DB_BACKEND = os.getenv("DB_BACKEND", "sqlite")  # sqlite / postgresql
 
-
 # 选择数据库后端
 if DB_BACKEND == "sqlite":
     from app.db.orm_store import orm_store
@@ -38,9 +37,3 @@ else:
 def get_db():
     """获取数据库实例"""
     return db
-
-
-# 初始化数据库
-from app.models import init_db
-
-init_db()

@@ -8,7 +8,6 @@ import shutil
 import gzip
 from datetime import datetime, timedelta
 from pathlib import Path
-import sqlite3
 import subprocess
 
 

@@ -2,10 +2,9 @@
 统计 API 端点
 """
 
-from fastapi import APIRouter, Depends
-from typing import Dict, List, Any
+from fastapi import APIRouter
+from typing import Dict, Any, List
 from datetime import datetime, timedelta
-from collections import Counter
 
 router = APIRouter()
 

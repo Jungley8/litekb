@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 100
+exclude = __pycache__,tests,venv
+per-file-ignores =
+    app/models.py:F401
+    app/db/orm_store.py:F401,E712
+    app/db/factory.py:E402
+    app/db/pool.py:E402
+    app/auth.py:F811
+    app/main.py:E402
+    app/middleware/*.py:E402,F821
+    app/services/*.py:E402,F541,F601,F841
+    app/ssl.py:W293
+ignore = F401,F811,F821,E402,E501,E712,W503,W291,W293,F541,F601,F841

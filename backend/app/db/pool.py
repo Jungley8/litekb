@@ -4,9 +4,14 @@
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.pool import QueuePool, NullPool
+from sqlalchemy.pool import QueuePool
 from typing import Generator
 import os
+import logging
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # 数据库连接池配置
 DATABASE_POOL_CONFIG = {
@@ -102,13 +107,8 @@ class PoolMonitor:
 
 
 # 创建引擎实例
-from app.config import settings
-
 engine = create_db_engine(settings.database_url)
 pool_monitor = PoolMonitor(engine)
-
-
-from loguru import logger
 
 
 def init_db_pool():

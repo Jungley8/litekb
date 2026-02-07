@@ -2,20 +2,11 @@
 main.py - LiteKB API Server (生产优化版)
 """
 
-from fastapi import (
-    FastAPI,
-    Depends,
-    HTTPException,
-    status,
-    UploadFile,
-    File,
-    Form,
-    Request,
-)
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List, AsyncGenerator
+from typing import Optional, List
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -551,7 +542,7 @@ async def health_check():
     redis_status = "healthy"
     try:
         await cache.get_redis()
-    except:
+    except Exception:
         redis_status = "unhealthy"
 
     return {
@@ -590,7 +581,7 @@ async def metrics():
     try:
         user_count = len(db.list_users())
         kb_count = len(db.list_kbs())
-    except:
+    except Exception:
         user_count = 0
         kb_count = 0
 
