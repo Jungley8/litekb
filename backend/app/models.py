@@ -193,7 +193,7 @@ class KBActivity(Base):
     )  # create_doc/update_doc/delete_doc/chat/search
     resource_type = Column(String(50))
     resource_id = Column(String(36))
-    metadata = Column(JSON)
+    extra_data = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -214,7 +214,7 @@ class Document(Base):
     file_hash = Column(String(64))
     status = Column(String(50), default="pending")  # pending/indexing/indexed/error
     error_message = Column(Text)
-    metadata = Column(JSON, default={})
+    extra_metadata = Column(JSON, default={})
     lang = Column(String(10), default="zh")
     char_count = Column(Integer)
     created_by = Column(String(36), ForeignKey("users.id"))
@@ -237,7 +237,7 @@ class DocumentChunk(Base):
     chunk_index = Column(Integer)
     content = Column(Text, nullable=False)
     token_count = Column(Integer)
-    metadata = Column(JSON, default={})
+    extra_metadata = Column(JSON, default={})
     embedding_id = Column(String(100))
     created_at = Column(DateTime, default=datetime.utcnow)
 

@@ -169,7 +169,7 @@ class DocumentService:
                 title=processed["title"],
                 file_type=processed["file_type"],
                 content=processed["content"],
-                metadata=processed["metadata"],
+                extra_metadata=processed["metadata"],
                 status="processing",
             )
             session.add(doc)
@@ -184,7 +184,7 @@ class DocumentService:
                     kb_id=kb_id,
                     chunk_index=i,
                     content=chunk_content,
-                    metadata={"source": filename},
+                    extra_metadata={"source": filename},
                 )
                 chunk_objects.append(chunk)
                 session.add(chunk)

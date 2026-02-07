@@ -151,7 +151,7 @@ class RAGEngine:
         sources = [
             {
                 "doc_id": chunk.id,
-                "title": chunk.metadata.get("source", "Unknown"),
+                "title": chunk.extra_metadata.get("source", "Unknown"),
                 "chunk": chunk.content[:300],
                 "score": chunk.score,
             }
