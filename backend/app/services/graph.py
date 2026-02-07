@@ -8,8 +8,13 @@ from loguru import logger
 import json
 
 from app.config import settings
-from app.data_models import get_session, GraphEntity, GraphRelation, DocumentChunk
+from app.data_models import GraphEntity, GraphRelation, DocumentChunk
+from app.db.orm_store import orm_store
 from app.services.prompt import get_prompt, entity_extraction_prompt
+
+# 获取 session 的函数
+def get_session():
+    return orm_store.get_session()
 
 
 @dataclass

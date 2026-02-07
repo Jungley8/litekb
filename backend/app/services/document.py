@@ -1,20 +1,15 @@
 """
-文档处理服务 - Langfuse 提示词
+文档处理服务
 """
 
 import os
 import uuid
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 from loguru import logger
 
 from app.config import settings
-from app.data_models import get_session, Document, DocumentChunk, KBDocument
-from app.services.prompt import (
-    summarize_prompt,
-    get_prompt,
-)
+from app.data_models import Document, DocumentChunk
 
 
 class DocumentProcessor:
@@ -31,17 +26,13 @@ class DocumentProcessor:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """处理文档"""
-        # 1. 提取文本
         text = await self.extract_text(file_content, filename)
-
-        # 2. 分块
         chunks = self.split_chunks(text)
 
-        # 3. 返回结果
         return {
             "title": Path(filename).stem,
             "file_type": self.get_file_type(filename),
-            "content": text[:1000],  # 保存前1000字符作为预览
+            "content": text[:1000],
             "chunks": chunks,
             "metadata": metadata or {},
         }
@@ -52,13 +43,10 @@ class DocumentProcessor:
 
         if file_type in ["txt", "md"]:
             return content.decode("utf-8")
-
         elif file_type == "docx":
             return await self.extract_docx(content)
-
         elif file_type == "pdf":
             return await self.extract_pdf(content)
-
         else:
             raise ValueError(f"不支持的文件类型: {file_type}")
 
@@ -81,10 +69,7 @@ class DocumentProcessor:
             from io import BytesIO
 
             doc = docx.Document(BytesIO(content))
-            text_parts = []
-            for para in doc.paragraphs:
-                if para.text.strip():
-                    text_parts.append(para.text)
+            text_parts = [para.text for para in doc.paragraphs if para.text.strip()]
             return "\n".join(text_parts)
         except ImportError:
             logger.warning("python-docx 未安装")
@@ -92,7 +77,6 @@ class DocumentProcessor:
 
     async def extract_pdf(self, content: bytes) -> str:
         """提取 PDF 文本"""
-        # TODO: 实现 PDF 提取
         logger.warning("PDF 提取功能待实现")
         return ""
 
@@ -108,9 +92,7 @@ class DocumentProcessor:
         while start < len(text):
             end = start + self.chunk_size
 
-            # 如果不是最后一块，尝试在句子边界断开
             if end < len(text):
-                # 查找最后一个句号、问号、感叹号或换行
                 for sep in [". ", "? ", "! ", "\n"]:
                     last_sep = text.rfind(sep, start, end)
                     if last_sep > start + self.chunk_size // 2:
@@ -122,29 +104,17 @@ class DocumentProcessor:
 
         return chunks
 
-    async def summarize_document(
-        self,
-        content: str,
-        max_length: str = "200",
-    ) -> str:
-        """生成文档摘要 - 使用 Langfuse 提示词"""
-        # 获取提示词
-        prompt_text = summarize_prompt(content, max_length)
-
-        # 这里可以调用 LLM 进行摘要
-        # summary = await llm.call(prompt_text)
-
-        logger.debug(f"Document summary prompt: {len(prompt_text)} chars")
-
-        # 回退：返回前 200 字
-        return content[:200] + "..."
-
 
 class DocumentService:
     """文档服务"""
 
     def __init__(self):
         self.processor = DocumentProcessor()
+
+    def _get_session(self):
+        """延迟导入 session"""
+        from app.db.orm_store import orm_store
+        return orm_store.get_session()
 
     async def create_document(
         self,
@@ -155,28 +125,24 @@ class DocumentService:
         metadata: Optional[Dict] = None,
     ) -> Document:
         """创建文档"""
-        session = get_session()
+        session = self._get_session()
 
         try:
-            # 处理文档
             processed = await self.processor.process_document(
                 content, filename, metadata
             )
 
-            # 保存文档
             doc = Document(
                 id=str(uuid.uuid4()),
-                title=processed["title"],
+                title=title,
                 file_type=processed["file_type"],
                 content=processed["content"],
-                extra_metadata=processed["metadata"],
+                metadata=processed["metadata"],
                 status="processing",
             )
             session.add(doc)
             session.flush()
 
-            # 创建分块
-            chunk_objects = []
             for i, chunk_content in enumerate(processed["chunks"]):
                 chunk = DocumentChunk(
                     id=str(uuid.uuid4()),
@@ -184,28 +150,15 @@ class DocumentService:
                     kb_id=kb_id,
                     chunk_index=i,
                     content=chunk_content,
-                    extra_metadata={"source": filename},
+                    metadata={"source": filename},
                 )
-                chunk_objects.append(chunk)
                 session.add(chunk)
 
-            # 关联到知识库
-            kb_doc = KBDocument(
-                id=str(uuid.uuid4()),
-                kb_id=kb_id,
-                doc_id=doc.id,
-                chunk_count=len(chunk_objects),
-            )
-            session.add(kb_doc)
-
             session.commit()
-
-            # 更新状态
             doc.status = "indexed"
             session.commit()
 
-            logger.info(f"文档 {doc.id} 创建成功，包含 {len(chunk_objects)} 个分块")
-
+            logger.info(f"文档 {doc.id} 创建成功")
             return doc
 
         except Exception as e:
@@ -218,11 +171,9 @@ class DocumentService:
         finally:
             session.close()
 
-    def get_documents(
-        self, kb_id: str, skip: int = 0, limit: int = 100
-    ) -> List[Document]:
+    def get_documents(self, kb_id: str, skip: int = 0, limit: int = 100) -> List[Document]:
         """获取知识库文档列表"""
-        session = get_session()
+        session = self._get_session()
         try:
             docs = (
                 session.query(DocumentChunk)
@@ -232,13 +183,11 @@ class DocumentService:
                 .all()
             )
 
-            # 去重
             seen = set()
             result = []
             for doc in docs:
                 if doc.doc_id not in seen:
                     seen.add(doc.doc_id)
-                    # 获取完整文档信息
                     full_doc = session.query(Document).get(doc.doc_id)
                     if full_doc:
                         result.append(full_doc)
@@ -249,7 +198,7 @@ class DocumentService:
 
     def get_chunks(self, doc_id: str) -> List[DocumentChunk]:
         """获取文档分块"""
-        session = get_session()
+        session = self._get_session()
         try:
             chunks = (
                 session.query(DocumentChunk)
@@ -263,17 +212,10 @@ class DocumentService:
 
     def delete_document(self, doc_id: str) -> bool:
         """删除文档"""
-        session = get_session()
+        session = self._get_session()
         try:
-            # 删除分块
             session.query(DocumentChunk).filter(DocumentChunk.doc_id == doc_id).delete()
-
-            # 删除关联
-            session.query(KBDocument).filter(KBDocument.doc_id == doc_id).delete()
-
-            # 删除文档
             session.query(Document).filter(Document.id == doc_id).delete()
-
             session.commit()
             return True
         except Exception as e:
@@ -283,5 +225,4 @@ class DocumentService:
             session.close()
 
 
-# 全局服务实例
 document_service = DocumentService()

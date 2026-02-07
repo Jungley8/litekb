@@ -7,9 +7,13 @@ from dataclasses import dataclass
 from loguru import logger
 
 from app.config import settings
-from app.services.search import hybrid_search, SearchResult
+from app.services.search import SearchService, SearchResult
 from app.services.prompt import get_prompt
-from app.data_models import get_session, Message, Conversation
+from app.db.orm_store import orm_store
+
+# 获取 session 的函数
+def get_session():
+    return orm_store.get_session()
 
 
 @dataclass

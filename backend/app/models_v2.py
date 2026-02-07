@@ -13,6 +13,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     ForeignKey,
+    UniqueConstraint,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -77,8 +78,7 @@ class OrganizationMember(Base):
     joined_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-        # 唯一约束: 同一用户在同一组织只有一个角色
-        {"unique": ("organization_id", "user_id")},
+        UniqueConstraint("organization_id", "user_id", name="uq_org_user"),
     )
 
 
@@ -146,7 +146,7 @@ class Document(Base):
     title = Column(String(500), nullable=False)
     file_type = Column(String(50))
     content = Column(Text)
-    metadata = Column(JSON, default={})
+    extra_metadata = Column(JSON, default={})
     status = Column(String(50), default="pending")
 
     created_by = Column(String(36))

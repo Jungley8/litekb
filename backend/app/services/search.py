@@ -5,6 +5,47 @@
 from typing import List, Dict, Any, Optional
 from loguru import logger
 from datetime import datetime
+from dataclasses import dataclass
+
+
+@dataclass
+class SearchResult:
+    """搜索结果"""
+    id: str
+    title: str
+    content: str
+    score: float
+    type: str = "document"
+    source_type: str = "keyword"
+    metadata: dict = None
+
+
+def rrf_fuse(
+    vector_results: List[Dict],
+    keyword_results: List[Dict],
+    top_k: int = 10,
+    k: int = 60,
+) -> List[Dict]:
+    """
+    RRF 融合
+    """
+    all_results = vector_results + keyword_results
+    
+    type_scores = {}
+    for r in all_results:
+        type_ = r.get("type", "default")
+        if type_ not in type_scores:
+            type_scores[type_] = []
+        type_scores[type_].append(r)
+
+    rrf_scores = []
+    for type_, items in type_scores.items():
+        for rank, item in enumerate(items, 1):
+            score = 1 / (rank + k)
+            rrf_scores.append({**item, "rrf_score": score})
+
+    rrf_scores.sort(key=lambda x: x.get("rrf_score", 0), reverse=True)
+    return rrf_scores[:top_k]
 
 
 class SearchService:

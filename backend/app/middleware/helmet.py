@@ -2,7 +2,10 @@
 安全中间件 - Helmet Headers
 """
 
-from fastapi.middleware.base import BaseHTTPMiddleware
+try:
+    from fastapi.middleware.base import BaseHTTPMiddleware
+except ImportError:
+    from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 

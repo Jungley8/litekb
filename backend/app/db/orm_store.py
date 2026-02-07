@@ -22,7 +22,6 @@ from app.data_models import (
     OrganizationMember,
     APIKey,
     RevokedToken,
-    KBDocument,
     Plugin,
     UserSetting,
     AuditLog,
