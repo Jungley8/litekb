@@ -1,19 +1,19 @@
 """
 自动追踪中间件
 """
+from typing import Callable, Dict, Optional
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import Callable
 import time
-import json
 from loguru import logger
+
 from app.tracing.langfuse import langfuse
 
 
 class TracingMiddleware(BaseHTTPMiddleware):
     """自动追踪中间件"""
-    
+
     # 不追踪的路径
     EXCLUDE_PATHS = {
         "/health",
@@ -22,23 +22,23 @@ class TracingMiddleware(BaseHTTPMiddleware):
         "/favicon.ico",
         "/static",
     }
-    
+
     def __init__(self, app, trace_all: bool = False):
         super().__init__(app)
         self.trace_all = trace_all
-    
+
     async def dispatch(self, request: Request, call_next: Callable):
         # 排除不需要追踪的路径
         if request.url.path in self.EXCLUDE_PATHS:
             return await call_next(request)
-        
+
         # 只追踪 API 请求
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
-        
+
         start_time = time.time()
         trace = None
-        
+
         try:
             # 创建追踪
             if langfuse.enabled:
@@ -52,7 +52,7 @@ class TracingMiddleware(BaseHTTPMiddleware):
                         "ip": request.client.host if request.client else None,
                     },
                 )
-                
+
                 # 记录请求
                 trace.event(
                     "request_received",
@@ -60,12 +60,12 @@ class TracingMiddleware(BaseHTTPMiddleware):
                         "body_size": request.headers.get("content-length", 0),
                     }
                 )
-            
+
             # 执行请求
             response = await call_next(request)
-            
+
             duration = (time.time() - start_time) * 1000
-            
+
             # 记录响应
             if langfuse.enabled:
                 trace.event(
@@ -75,25 +75,25 @@ class TracingMiddleware(BaseHTTPMiddleware):
                         "duration_ms": duration,
                     }
                 )
-                
+
                 # 结束追踪
                 trace.end({
                     "status_code": response.status_code,
                     "duration_ms": duration,
                 })
-            
+
             # 记录慢请求
             if duration > 5000:  # > 5s
                 logger.warning(
                     f"[Slow Request] {request.method} {request.url.path}: "
                     f"{duration:.2f}ms"
                 )
-            
+
             return response
-            
+
         except Exception as e:
             duration = (time.time() - start_time) * 1000
-            
+
             if langfuse.enabled and trace:
                 trace.event(
                     "error",
@@ -103,11 +103,11 @@ class TracingMiddleware(BaseHTTPMiddleware):
                     }
                 )
                 trace.end({"error": True})
-            
+
             logger.error(
                 f"[Request Error] {request.method} {request.url.path}: {e}"
             )
-            
+
             return JSONResponse(
                 status_code=500,
                 content={"detail": "Internal server error"},
@@ -117,10 +117,10 @@ class TracingMiddleware(BaseHTTPMiddleware):
 # RAG 追踪集成
 class RAGTracing:
     """RAG 流程追踪"""
-    
+
     def __init__(self):
         self.langfuse = langfuse
-    
+
     async def trace_rag_query(
         self,
         kb_id: str,
@@ -133,7 +133,7 @@ class RAGTracing:
         trace = None
         retrieval_span = None
         generation_span = None
-        
+
         try:
             # 创建追踪
             with self.langfuse.trace_context(
@@ -149,34 +149,34 @@ class RAGTracing:
                     name="retrieval",
                     metadata={"strategy": "hybrid"},
                 )
-                
+
                 # 执行检索
                 results = await func()
-                
+
                 # 结束检索
                 retrieval_span.end({
                     "results_count": len(results),
                     "duration_ms": (time.time() - start_time) * 1000,
                 })
-                
+
                 # 生成阶段
                 generation_span = trace.span(
                     name="generation",
                     metadata={"model": "unknown"},
                 )
-                
+
                 return results, trace, generation_span
-        
+
         except Exception as e:
             logger.error(f"RAG tracing failed: {e}")
             return None, None, None
-    
+
     def end_generation(
         self,
         generation_span,
         completion: str,
         model: str,
-        usage: Dict = None,
+        usage: Optional[Dict] = None,
     ):
         """结束生成"""
         if generation_span:
