@@ -1,183 +1,95 @@
-# LiteKB - 项目状态
+# 🚀 LiteKB - 开源知识库系统
 
-## ✅ 已完成
+<div align="center">
 
-### 核心功能 (100%)
-| 模块 | 状态 | 说明 |
-|------|------|------|
-| 用户认证 | ✅ | JWT + 注册/登录 |
-| 知识库 CRUD | ✅ | 完整实现 |
-| 文档管理 | ✅ | 上传/列表/删除 |
-| RAG 对话 | ✅ | 3 种模式 |
-| 混合检索 | ✅ | 向量 + BM25 + RRF |
-| 知识图谱 | ✅ | 实体/关系抽取 |
-| SSE 流式 | ✅ | 实时响应 |
-| 数据持久化 | ✅ | JSON 文件存储 |
-| Redis 缓存 | ✅ | 缓存中间件 |
+**LiteKB** - 轻量级知识库系统，支持 RAG、图谱检索、SSO 认证
 
-### 高级功能
-| 模块 | 状态 | 说明 |
-|------|------|------|
-| SSO 集成 | ✅ | Google/GitHub/Microsoft |
-| 本地模型 | ✅ | Ollama + vLLM |
-| 插件系统 | ✅ | 钩子系统 |
-| 多模态 | ✅ | 图片/音频 |
-| 分享功能 | ✅ | 链接 + 嵌入 |
-| 统计仪表盘 | ✅ | 完整统计 |
-| E2E 测试 | ✅ | Playwright |
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Vue 3](https://img.shields.io/badge/Vue-3-green.svg)](https://vuejs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-cyan.svg)](https://fastapi.tiangolo.com/)
 
----
+</div>
 
-## 📊 项目统计
+## ✨ 特性
 
-| 项目 | 数量 |
+| 功能 | 描述 |
 |------|------|
-| 提交次数 | 27 次 |
-| API 端点 | 50+ |
-| 后端服务 | 20+ |
-| 前端页面 | 12+ |
+| **RAG 检索** | 混合检索 (向量 + BM25 + RRF) |
+| **知识图谱** | Neo4j 集成，支持 Graph RAG |
+| **提示词管理** | Langfuse 统一管理所有提示词 |
+| **多租户认证** | JWT + API Key + RBAC |
+| **SSO 登录** | Google/GitHub/Microsoft OAuth |
+| **流式响应** | SSE 支持实时输出 |
+| **监控告警** | Prometheus + Grafana |
+| **Docker 部署** | 一键生产部署 |
 
 ---
 
-## 🚀 快速启动
+## 🏗️ 架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      用户界面 (Vue 3)                   │
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│                     Nginx (反向代理)                     │
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│                   FastAPI 后端                          │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐ │
+│  │ RAG 引擎    │ │ 知识图谱    │ │ 提示词管理      │ │
+│  │ (rag_v2)    │ │ (graph)     │ │ (Langfuse)      │ │
+│  └─────────────┘ └─────────────┘ └─────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+                          │
+          ┌───────────────┼───────────────┐
+          ▼               ▼               ▼
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│ PostgreSQL  │   │   Redis     │   │   Qdrant    │
+│ (主数据)    │   │ (缓存/队列) │   │ (向量库)    │
+└─────────────┘   └─────────────┘   └─────────────┘
+                          │
+                          ▼
+                  ┌─────────────┐
+                  │   Neo4j     │
+                  │ (知识图谱)  │
+                  └─────────────┘
+```
+
+---
+
+## 🚀 快速开始
+
+### 1. 环境准备
 
 ```bash
-# 克隆
+# 安装 Docker & Docker Compose
+# 克隆项目
 git clone https://github.com/Jungley8/litekb.git
 cd litekb
-
-# 启动 (开发)
-docker-compose up -d
-
-# 访问
-# 前端: http://localhost:3000
-# API: http://localhost:8000/docs
 ```
 
----
-
-## ⚙️ 环境配置
+### 2. 配置环境变量
 
 ```bash
-# .env
-JWT_SECRET_KEY=your-secure-key
-TOKEN_EXPIRE_MINUTES=60
-DB_BACKEND=json  # json / sqlite / postgresql
-REDIS_ENABLED=false
-OLLAMA_URL=http://localhost:11434
-VLLM_URL=http://localhost:8000/v1
+# 复制配置
+cp .env.example .env
+
+# 生成强密钥
+echo "SECRET_KEY=$(openssl rand -hex 64)" >> .env
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 32)" >> .env
+echo "REDIS_PASSWORD=$(openssl rand -hex 32)" >> .env
+
+# 编辑 .env 填入必要配置
+nano .env
 ```
 
----
-
-## 📁 项目结构
-
-```
-litekb/
-├── backend/
-│   ├── app/
-│   │   ├── api/          # API 端点
-│   │   │   ├── models.py # 模型管理
-│   │   │   ├── stats.py  # 统计 API
-│   │   │   └── share.py  # 分享 API
-│   │   ├── db/           # 数据库
-│   │   │   ├── json_store.py  # JSON 持久化
-│   │   │   └── factory.py      # 数据库工厂
-│   │   ├── services/     # 业务服务
-│   │   │   ├── rag.py    # RAG 引擎
-│   │   │   ├── search.py # 混合检索
-│   │   │   ├── graph.py  # 知识图谱
-│   │   │   ├── sse.py    # SSE 流式
-│   │   │   ├── cache.py  # Redis 缓存
-│   │   │   ├── ollama.py # Ollama 客户端
-│   │   │   ├── vllm.py   # vLLM 客户端
-│   │   │   └── model_provider.py # 多供应商
-│   │   └── main.py       # 主入口
-│   └── tests/
-├── frontend/
-│   ├── src/
-│   │   ├── api/          # API 客户端
-│   │   ├── views/        # 页面
-│   │   ├── components/   # 组件
-│   │   └── composables/  # Hooks
-│   └── tests/           # E2E 测试
-└── docs/               # 文档
-    ├── MODEL_GUIDE.md   # 模型配置指南
-    └── CHECKLIST.md     # 流程检查
-```
-
----
-
-## 🎯 供应商配置
-
-| 场景 | 供应商 | 模型 | 成本 |
-|------|--------|------|------|
-| 高质量 | OpenAI | gpt-4o | $$ |
-| 性价比 | OpenAI | gpt-4o-mini | $ |
-| 免费本地 | Ollama | qwen2.5:7b | 免费 |
-| 高并发 | vLLM | Qwen2.5-7B | 免费 |
-
----
-
-## 📝 API 文档
-
-访问 `http://localhost:8000/docs` 查看完整 API 文档。
-
-主要端点：
-
-```bash
-# 认证
-POST /api/v1/auth/register  # 注册
-POST /api/v1/auth/login     # 登录
-
-# 知识库
-POST /api/v1/kb             # 创建
-GET /api/v1/kb              # 列表
-GET /api/v1/kb/{id}         # 详情
-DELETE /api/v1/kb/{id}      # 删除
-
-# 文档
-POST /api/v1/kb/{id}/docs   # 创建
-GET /api/v1/kb/{id}/docs    # 列表
-DELETE /api/v1/kb/{id}/docs/{doc_id}  # 删除
-
-# 搜索
-POST /api/v1/kb/{id}/search  # 知识库内搜索
-POST /api/v1/search          # 全局搜索
-
-# RAG
-POST /api/v1/kb/{id}/chat    # 对话
-POST /api/v1/kb/{id}/chat/stream  # 流式对话
-
-# 图谱
-GET /api/v1/kb/{id}/graph    # 获取图谱
-POST /api/v1/kb/{id}/graph/build  # 构建图谱
-```
-
----
-
-## 🧪 测试
-
-```bash
-# 后端测试
-cd backend
-pytest tests/ -v --cov
-
-# 前端测试
-cd frontend
-npm run test:e2e
-
-# API 测试
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"test","password":"test123"}'
-```
-
----
-
-## 📦 部署
-
-### Docker 部署
+### 3. 启动服务
 
 ```bash
 # 开发环境
@@ -187,41 +99,143 @@ docker-compose up -d
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
+### 4. 访问
+
+| 服务 | 地址 |
+|------|------|
+| **Web UI** | http://localhost:80 |
+| **API** | http://localhost:8000 |
+| **Prometheus** | http://localhost:9090 |
+| **Grafana** | http://localhost:3001 |
+
+---
+
+## 📁 项目结构
+
+```
+litekb/
+├── backend/                 # FastAPI 后端
+│   ├── app/
+│   │   ├── api/            # API 端点
+│   │   ├── db/             # 数据库层
+│   │   ├── middleware/     # 中间件
+│   │   ├── models/         # ORM 模型
+│   │   ├── services/       # 业务逻辑
+│   │   │   ├── rag_v2.py   # RAG 引擎
+│   │   │   ├── graph.py    # 知识图谱
+│   │   │   └── prompt.py   # 提示词管理
+│   │   └── tracing/        # Langfuse 集成
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/               # Vue 3 前端
+│   ├── src/
+│   └── Dockerfile
+├── docs/                   # 文档
+├── nginx.conf              # Nginx 配置
+└── docker-compose.prod.yml # 生产部署
+```
+
+---
+
+## 🔧 配置说明
+
 ### 环境变量
 
-```bash
-# 生产必填
-JWT_SECRET_KEY=<生成随机字符串>
-OPENAI_API_KEY=<你的 API Key>
+| 变量 | 必需 | 描述 |
+|------|------|------|
+| `SECRET_KEY` | ✅ | 应用密钥 (32+ 字符) |
+| `POSTGRES_PASSWORD` | ✅ | PostgreSQL 密码 |
+| `REDIS_PASSWORD` | ✅ | Redis 密码 |
+| `OPENAI_API_KEY` | ✅ | OpenAI API Key |
+| `LANGFUSE_ENABLED` | ❌ | 启用 Langfuse (默认 false) |
 
-# 可选
-OLLAMA_URL=http://localhost:11434
-VLLM_URL=http://localhost:8000/v1
-REDIS_URL=redis://localhost:6379/0
+### 可选配置
+
+| 服务 | 配置 |
+|------|------|
+| **Ollama** | `OLLAMA_URL`, `OLLAMA_MODEL` |
+| **vLLM** | `VLLM_URL` |
+| **Anthropic** | `ANTHROPIC_API_KEY` |
+| **Neo4j** | `NEO4J_URL`, `NEO4J_PASSWORD` |
+
+---
+
+## 📖 文档
+
+| 文档 | 描述 |
+|------|------|
+| [docs/PRODUCTION.md](docs/PRODUCTION.md) | 生产部署指南 |
+| [docs/TRACING.md](docs/TRACING.md) | Langfuse 集成 |
+| [docs/MODEL_GUIDE.md](docs/MODEL_GUIDE.md) | 模型配置指南 |
+
+---
+
+## 🛠️ 开发
+
+### 本地开发
+
+```bash
+# 后端
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# 前端
+cd frontend
+pnpm install
+pnpm dev
 ```
+
+### 测试
+
+```bash
+cd backend
+pytest tests/ -v
+```
+
+---
+
+## 🔒 安全
+
+- ✅ JWT 认证 + API Key
+- ✅ RBAC 权限控制 (owner/admin/member)
+- ✅ Rate Limiting (100 req/min)
+- ✅ Helmet Headers
+- ✅ CORS 配置
+- ✅ Redis/PostgreSQL 认证
+
+---
+
+## 📊 监控
+
+- **Prometheus** - 指标采集
+- **Grafana** - 可视化面板
+- **健康检查** - `/health`, `/ready`
+- **日志** - JSON 格式，结构化输出
 
 ---
 
 ## 🤝 贡献
 
 1. Fork 本仓库
-2. 创建分支 (`git checkout -b feature/xxx`)
-3. 提交更改 (`git commit -m "feat: xxx"`)
-4. 推送分支 (`git push origin feature/xxx`)
-5. 创建 PR
+2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交改动 (`git commit -m 'Add amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 创建 Pull Request
 
 ---
 
-## 📄 许可证
+## 📝 许可证
 
-MIT License
+MIT License - 详见 [LICENSE](LICENSE)
 
 ---
 
-## 🙏 感谢
+## 🙏 致谢
 
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [Vue 3](https://vuejs.org/)
-- [Naive UI](https://www.naiveui.com/)
-- [Qdrant](https://qdrant.tech/)
-- [Ollama](https://ollama.com/)
+- [FastAPI](https://fastapi.tiangolo.com/) - 现代 Python Web 框架
+- [Vue 3](https://vuejs.org/) - 渐进式 JavaScript 框架
+- [Qdrant](https://qdrant.tech/) - 高性能向量数据库
+- [Langfuse](https://langfuse.com/) - LLM 可观测性平台
