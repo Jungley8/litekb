@@ -85,15 +85,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v4
-        with:
-          path: frontend/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
       
       - name: Install dependencies
         working-directory: ./frontend
