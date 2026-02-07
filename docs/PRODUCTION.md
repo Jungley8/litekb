@@ -1,203 +1,330 @@
-# 🚀 LiteKB 生产环境部署检查清单
+# 🚀 LiteKB 生产环境优化清单
 
-> **完成状态**: ✅ **所有生产优化已完成**
+## ⚠️ 立即修复
 
----
+### 1. Langfuse 环境变量
 
-## ✅ 已完成项目
-
-### 1. 配置文件
-
-| 文件 | 状态 | 说明 |
-|------|------|------|
-| `.env.example` | ✅ | 环境变量模板 |
-| `.dockerignore` | ✅ | Docker 忽略文件 |
-| `backend/Dockerfile` | ✅ | 后端镜像 (多阶段构建) |
-| `frontend/Dockerfile` | ✅ | 前端镜像 |
-| `nginx.conf` | ✅ | 反向代理 + SSL |
-| `docker-compose.prod.yml` | ✅ | 生产部署配置 |
-| `prometheus.yml` | ✅ | 监控配置 |
-| `docs/PRODUCTION.md` | ✅ | 生产优化清单 |
-| `docs/DEPLOY.md` | ✅ | 部署指南 |
-
----
-
-### 2. 安全性
-
-| 功能 | 状态 | 文件 |
-|------|------|------|
-| JWT Key 环境变量 | ✅ | main.py |
-| 密码强度验证 | ✅ | Pydantic EmailStr |
-| Rate Limiting | ✅ | `middleware/rate_limit.py` |
-| Helmet Headers | ✅ | `middleware/helmet.py` |
-| HSTS | ✅ | `middleware/helmet.py` |
-| CORS 配置 | ✅ | main.py |
-| SSL Let's Encrypt | ✅ | `ssl.py` |
-
----
-
-### 3. 性能优化
-
-| 功能 | 状态 | 文件 |
-|------|------|------|
-| 数据库连接池 | ✅ | `db/pool.py` |
-| 连接前检查 | ✅ | `db/pool.py` |
-| 连接池监控 | ✅ | `db/pool.py` |
-| Redis 缓存 | ✅ | `services/cache.py` |
-| Gzip 压缩 | ✅ | `nginx.conf` |
-
----
-
-### 4. 监控与日志
-
-| 功能 | 状态 | 文件 |
-|------|------|------|
-| /health 端点 | ✅ | main.py |
-| /ready 端点 | ✅ | main.py |
-| /metrics 端点 | ✅ | main.py |
-| Sentry 集成 | ✅ | `sentry.py` |
-| 错误追踪 | ✅ | `sentry.py` |
-| Prometheus 配置 | ✅ | `prometheus.yml` |
-| 结构化日志 | ✅ | loguru |
-
----
-
-### 5. 高可用性
-
-| 功能 | 状态 | 文件 |
-|------|------|------|
-| 多副本部署 | ✅ | docker-compose.prod.yml |
-| 自动备份 | ✅ | `backup.py` |
-| SSL 证书 | ✅ | `ssl.py` |
-| 健康检查 | ✅ | Dockerfile + main.py |
-| 自动重启 | ✅ | docker-compose restart: unless-stopped |
-
----
-
-### 6. 代码质量
-
-| 功能 | 状态 | 文件 |
-|------|------|------|
-| ORM 21张表 | ✅ | `models.py` |
-| ORM Store | ✅ | `db/orm_store.py` |
-| Python 依赖升级 | ✅ | `requirements.txt` |
-| 前端 pnpm + Tailwind | ✅ | `frontend/package.json` |
-
----
-
-## 📦 新增文件清单
-
+```yaml
+# docker-compose.prod.yml
+environment:
+  # ... 现有配置
+  - LANGFUSE_ENABLED=${LANGFUSE_ENABLED}
+  - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+  - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+  - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
 ```
-LiteKB/
-├── backend/
-│   ├── app/
-│   │   ├── middleware/
-│   │   │   ├── rate_limit.py   # ✅ 限流
-│   │   │   └── helmet.py       # ✅ 安全Headers
-│   │   ├── db/
-│   │   │   ├── pool.py        # ✅ 连接池
-│   │   │   └── orm_store.py    # ✅ ORM
-│   │   ├── sentry.py          # ✅ 错误追踪
-│   │   ├── backup.py          # ✅ 自动备份
-│   │   ├── ssl.py             # ✅ SSL证书
-│   │   └── main.py            # ✅ 完整集成
-│   └── requirements.txt       # ✅ 完整依赖
-├── frontend/
-│   ├── package.json           # ✅ pnpm + TailwindCSS
-│   └── Dockerfile             # ✅ 多阶段构建
-├── .env.example                # ✅ 环境模板
-├── .dockerignore              # ✅ Docker忽略
-├── nginx.conf                 # ✅ Nginx配置
-├── docker-compose.prod.yml    # ✅ 生产部署
-└── prometheus.yml             # ✅ 监控配置
+
+添加 `.env`:
+```bash
+LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=pk-xxx
+LANGFUSE_SECRET_KEY=sk-xxx
+LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
 ---
 
-## 🚀 快速部署
+### 2. Celery Broker 配置
+
+```yaml
+celery-worker:
+  environment:
+    - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+    - CELERY_RESULT_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+```
+
+---
+
+### 3. 后端健康检查
+
+```yaml
+backend:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    # 改为检查 /ready
+    test: ["CMD-SHELL", "curl -f http://localhost:8000/health && curl -f http://localhost:8000/ready"]
+```
+
+---
+
+## 🔒 安全加固
+
+### 4. Redis 认证
+
+```yaml
+redis:
+  command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+  environment:
+    - REDIS_PASSWORD=${REDIS_PASSWORD}
+```
+
+更新所有依赖 Redis 的服务：
+```yaml
+environment:
+  - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+```
+
+---
+
+### 5. JWT Secret 强度
 
 ```bash
-# 1. 配置环境变量
+# 生成强密钥
+openssl rand -hex 64
+
+# .env
+SECRET_KEY=your-super-secret-key-min-32-chars
+JWT_ALGORITHM=HS256
+TOKEN_EXPIRE_MINUTES=60
+```
+
+---
+
+### 6. HTTPS 强制重定向
+
+```nginx
+# nginx.conf
+server {
+    listen 80;
+    server_name _;
+    
+    # 强制 HTTPS
+    return 301 https://$server_name$request_uri;
+}
+```
+
+---
+
+## 🚀 性能优化
+
+### 7. Nginx Rate Limiting
+
+```nginx
+http {
+    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+    limit_req_zone $binary_remote_addr zone=login_limit:10m rate=5r/m;
+    
+    server {
+        location /api/ {
+            limit_req zone=api_limit burst=20 nodelay;
+        }
+        
+        location /api/auth/login {
+            limit_req zone=login_limit burst=5 nodelay;
+        }
+    }
+}
+```
+
+---
+
+### 8. 数据库连接池调优
+
+```bash
+# .env
+DB_POOL_SIZE=20
+DB_MAX_OVERFLOW=40
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=1800
+```
+
+---
+
+### 9. Qdrant 性能
+
+```yaml
+qdrant:
+  environment:
+    - QDRANT__STORAGE__PERFORMANCE__MAX_OPTIMIZERS_THREADS=4
+    - QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=4
+    - QDRANT__STORAGE__PERFORMANCE__UPDATE_CUDA=1  # 如果有 GPU
+```
+
+---
+
+### 10. PostgreSQL 优化
+
+```sql
+-- postgres/init/performance.sql
+ALTER SYSTEM SET shared_buffers = '1GB';
+ALTER SYSTEM SET effective_cache_size = '3GB';
+ALTER SYSTEM SET work_mem = '64MB';
+ALTER SYSTEM SET maintenance_work_mem = '512MB';
+ALTER SYSTEM SET checkpoint_completion_target = 0.9;
+ALTER SYSTEM SET wal_buffers = '64MB';
+ALTER SYSTEM SET max_connections = 200;
+```
+
+---
+
+## 📊 监控告警
+
+### 11. 健康检查端点
+
+后端需实现 `/ready` 端点：
+
+```python
+# app/main.py
+@app.get("/ready")
+async def readiness_check():
+    """就绪检查"""
+    checks = {
+        "database": False,
+        "redis": False,
+        "qdrant": False,
+    }
+    
+    try:
+        # DB
+        from app.db.factory import db
+        db.session.execute("SELECT 1")
+        checks["database"] = True
+    except:
+        pass
+    
+    # ... 其他检查
+    
+    if all(checks.values()):
+        return {"status": "ready", "checks": checks}
+    else:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "checks": checks}
+        )
+```
+
+---
+
+### 12. 日志轮转
+
+```bash
+# /etc/logrotate.d/litekb
+/var/log/litekb/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0644 root root
+    postrotate
+        docker-compose restart backend nginx
+    endscript
+}
+```
+
+---
+
+## 💾 备份策略
+
+### 13. 自动备份脚本
+
+```bash
+#!/bin/bash
+# scripts/backup.sh
+
+BACKUP_DIR="/backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+# 数据库备份
+docker exec litekb_postgres_1 pg_dump -U litekb litekb > "$BACKUP_DIR/db_$DATE.sql"
+
+# Qdrant 备份
+docker exec litekb_qdrant_1 qdrant-cli backup --collection litekb_chunks "$BACKUP_DIR/qdrant_$DATE"
+
+# 清理旧备份 (保留 7 天)
+find "$BACKUP_DIR" -name "*.sql" -mtime +7 -delete
+find "$BACKUP_DIR" -name "qdrant_*" -mtime +7 -rf
+
+# 上传到 S3 (可选)
+# aws s3 cp "$BACKUP_DIR/" s3://litekb-backups/
+```
+
+定时任务:
+```bash
+# crontab
+0 3 * * * /opt/litekb/scripts/backup.sh
+```
+
+---
+
+## 📋 部署清单
+
+### 部署前检查
+
+```bash
+# 1. 生成密钥
+openssl rand -hex 64 > .env.secret
+echo "SECRET_KEY=$(cat .env.secret)" >> .env
+
+# 2. 更新环境变量
 cp .env.example .env
-# 编辑 .env 填写真实值
+# 编辑 .env 填入所有密钥
 
-# 2. 创建 secrets
-mkdir -p secrets ssl
-openssl rand -base64 32 > secrets/postgres_password.txt
+# 3. 创建目录
+mkdir -p ssl secrets backups
 
-# 3. 启动
-docker-compose -f docker-compose.prod.yml up -d --build
+# 4. 生成 SSL 证书
+# Let's Encrypt
+certbot certonly --standalone -d your-domain.com
 
-# 4. 检查
-docker-compose -f docker-compose.prod.yml ps
+# 5. 构建
+docker-compose -f docker-compose.prod.yml build
 
-# 5. 迁移数据库
-docker-compose -f docker-compose.prod.yml exec backend python -m alembic upgrade head
+# 6. 测试
+docker-compose -f docker-compose.prod.yml up -d
+docker-compose logs -f
 ```
 
 ---
 
-## 📊 监控访问
+## ✅ 最终检查清单
 
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| 应用 | http://localhost | 前端 |
-| API | http://localhost/api | 后端 API |
-| 健康检查 | http://localhost:8000/health | 健康状态 |
-| Prometheus | http://localhost:9090 | 监控 |
-| Grafana | http://localhost:3001 | 可视化 |
-
----
-
-## ✅ 检查清单
-
-### 安全性
-- [x] JWT Key 使用环境变量
-- [x] 密码强度验证 (EmailStr)
-- [x] Rate Limiting (100次/分钟)
-- [x] Helmet Security Headers
-- [x] HSTS (生产环境)
-- [x] CORS 正确配置
-
-### 性能
-- [x] 数据库连接池 (10+20)
-- [x] 连接前检查
-- [x] Redis 缓存
-- [x] Gzip 压缩
-- [x] 异步 Celery
-
-### 监控
-- [x] /health 端点
-- [x] /ready 端点
-- [x] /metrics 端点
-- [x] Sentry 集成
-- [x] Prometheus 配置
-
-### 高可用
-- [x] 多副本部署
-- [x] 自动备份脚本
-- [x] SSL 证书支持
-- [x] 健康检查
-- [x] 自动重启策略
+| 项目 | 状态 | 优先级 |
+|------|------|--------|
+| Langfuse 环境变量 | ⬜ | P0 |
+| Redis 认证 | ⬜ | P0 |
+| JWT Secret 强密钥 | ⬜ | P0 |
+| HTTPS 强制重定向 | ⬜ | P1 |
+| Rate Limiting | ⬜ | P1 |
+| 数据库连接池调优 | ⬜ | P2 |
+| /ready 健康检查 | ⬜ | P2 |
+| 日志轮转 | ⬜ | P2 |
+| 自动备份 | ⬜ | P2 |
+| PostgreSQL 优化 | ⬜ | P3 |
+| 监控告警 | ⬜ | P3 |
 
 ---
 
-## 🎉 项目状态
+## 🎯 最小可行生产配置 (P0)
 
-```
-✅ 核心功能: 100%
-✅ 生产配置: 100%
-✅ 安全优化: 100%
-✅ 监控运维: 100%
-✅ 文档完整: 100%
+只需修改 `docker-compose.prod.yml` 和 `.env`：
 
-项目状态: 🚀 **可直接用于生产部署**
+```bash
+# .env
+SECRET_KEY=<openssl rand -hex 64>
+POSTGRES_PASSWORD=<openssl rand -hex 32>
+REDIS_PASSWORD=<openssl rand -hex 32>
+JWT_SECRET_KEY=<openssl rand -hex 32>
+
+LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=pk-xxx
+LANGFUSE_SECRET_KEY=sk-xxx
+
+OPENAI_API_KEY=sk-xxx
 ```
 
----
+```yaml
+# docker-compose.prod.yml
+backend:
+  environment:
+    - SECRET_KEY=${SECRET_KEY}
+    - LANGFUSE_ENABLED=${LANGFUSE_ENABLED}
+    - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+    - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
 
-## 📚 文档链接
+redis:
+  command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+```
 
-- [部署指南](docs/DEPLOY.md)
-- [模型配置](docs/MODEL_GUIDE.md)
-- [API 文档](http://localhost:8000/docs)
+这样就可以部署了！
