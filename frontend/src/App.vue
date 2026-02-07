@@ -140,7 +140,7 @@ const themeOverrides = computed(() => ({
     modalColor: isDark.value ? '#1a1a1a' : '#fff',
     popoverColor: isDark.value ? '#1a1a1a' : '#fff',
     bodyColor: isDark.value ? '#0f0f0f' : '#f5f7f9',
-    textColorBase: isDark.value => '#fff' : '#333',
+    textColorBase: isDark.value ? '#fff' : '#333',
     textColor1: isDark.value ? '#fff' : '#333',
     textColor2: isDark.value ? '#ccc' : '#666',
     textColor3: isDark.value ? '#999' : '#999',
