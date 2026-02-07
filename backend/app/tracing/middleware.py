@@ -11,6 +11,7 @@ from loguru import logger
 
 try:
     from app.tracing.langfuse import langfuse
+
     LANGFUSE_AVAILABLE = True
 except ImportError:
     LANGFUSE_AVAILABLE = False
