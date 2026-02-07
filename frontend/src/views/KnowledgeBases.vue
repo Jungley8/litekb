@@ -62,7 +62,8 @@
       <n-form ref="formRef" :model="newKB" :rules="rules">
         <n-form-item label="名称" path="name">
           <n-input v-model:value="newKB.name" placeholder="输入知识库名称" />
-        </n-form-item label="描述" path="description">
+        </n-form-item>
+        <n-form-item label="描述" path="description">
           <n-input
             v-model:value="newKB.description"
             type="textarea"

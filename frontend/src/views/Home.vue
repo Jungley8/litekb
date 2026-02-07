@@ -50,7 +50,7 @@
           搜索文档
         </n-button>
         <n-button @click="$router.push('/graph')">
-          <template #icon><n-icon><GraphOutline /></n-icon></template>
+          <template #icon><n-icon><MapOutline /></n-icon></template>
           知识图谱
         </n-button>
       </n-space>
@@ -82,7 +82,7 @@ import {
   AddOutline,
   ChatbubblesOutline,
   SearchOutline,
-  GraphOutline,
+  MapOutline,
   FolderOutline,
   DocumentTextOutline,
   PeopleOutline,

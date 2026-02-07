@@ -3,7 +3,7 @@
     <n-card :bordered="false">
       <template #header>
         <div class="header">
-          <n-icon size="24" color="#d03050"><GraphOutline /></n-icon>
+          <n-icon size="24" color="#d03050"><MapOutline /></n-icon>
           <span>知识图谱可视化</span>
         </div>
       </template>
@@ -78,7 +78,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import * as d3 from 'd3'
-import { GraphOutline, CloseOutline } from '@vicons/ionicons5'
+import { MapOutline, CloseOutline } from '@vicons/ionicons5'
 
 interface GraphNode {
   id: string

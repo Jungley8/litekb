@@ -1,7 +1,7 @@
 /**
  * 模型供应商 API
  */
-import axios from './index'
+import api from './index'
 
 export interface ProviderInfo {
   type: string  // 'openai' | 'anthropic' | 'google' | 'ollama' | 'vllm'

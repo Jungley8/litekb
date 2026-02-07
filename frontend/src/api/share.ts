@@ -1,7 +1,7 @@
-"""
-分享 API 对接
-"""
-import axios from './index'
+/**
+ * 分享 API 对接
+ */
+import api from './index'
 
 export interface ShareLink {
   id: string

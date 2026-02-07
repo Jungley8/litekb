@@ -87,9 +87,9 @@ import {
   FolderOutline,
   ChatbubblesOutline,
   SearchOutline,
-  GraphOutline,
+  MapOutline,
   SettingsOutline,
-  StatsOutline,
+  BarChartOutline,
   MoonOutline,
   SunnyOutline
 } from '@vicons/ionicons5'
@@ -176,12 +176,12 @@ const menuOptions = [
   {
     label: '知识图谱',
     key: 'graph',
-    icon: renderIcon(GraphOutline)
+    icon: renderIcon(MapOutline)
   },
   {
     label: '统计',
     key: 'stats',
-    icon: renderIcon(StatsOutline)
+    icon: renderIcon(BarChartOutline)
   },
   {
     type: 'divider'

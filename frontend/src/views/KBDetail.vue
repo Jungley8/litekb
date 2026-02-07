@@ -19,7 +19,7 @@
           </n-button>
           <n-dropdown :options="moreOptions" @select="handleMore">
             <n-button>
-              <template #icon><n-icon><MoreOutline /></n-icon></template>
+              <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
               更多
             </n-button>
           </n-dropdown>
@@ -119,7 +119,7 @@ import { useMessage } from 'naive-ui'
 import {
   ArrowBackOutline,
   CloudUploadOutline,
-  MoreOutline
+  EllipsisVerticalOutline
 } from '@vicons/ionicons5'
 import { kbApi, docApi } from '../api'
 import Chat from './Chat.vue'

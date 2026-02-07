@@ -85,6 +85,7 @@ app.add_middleware(RateLimitMiddleware, calls=100, period=60)
 # Tracing 中间件 (自动追踪 API 请求) - 可选
 try:
     from app.tracing.middleware import TracingMiddleware
+
     app.add_middleware(TracingMiddleware)
     print("✅ TracingMiddleware 已启用")
 except ImportError:

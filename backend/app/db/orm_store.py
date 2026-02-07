@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine, text
 from loguru import logger
 
-from app.models import (
+from app.data_models import (
     User,
     KnowledgeBase,
     Document,
@@ -55,7 +55,7 @@ class ORMStore:
 
     def _init_tables(self):
         """初始化表"""
-        from app.models import Base
+        from app.data_models import Base
 
         Base.metadata.create_all(bind=self.engine)
         logger.info(f"ORM tables initialized: {self.db_url}")

@@ -8,7 +8,7 @@ from loguru import logger
 import json
 
 from app.config import settings
-from app.models import get_session, GraphEntity, GraphRelation, DocumentChunk
+from app.data_models import get_session, GraphEntity, GraphRelation, DocumentChunk
 from app.services.prompt import get_prompt, entity_extraction_prompt
 
 

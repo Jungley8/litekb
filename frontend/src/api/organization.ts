@@ -1,7 +1,7 @@
-"""
-组织管理 API 对接
-"""
-import axios from './index'
+/**
+ * 组织管理 API 对接
+ */
+import api from './index'
 
 export interface Organization {
   id: string

@@ -10,7 +10,7 @@ from datetime import datetime
 from loguru import logger
 
 from app.config import settings
-from app.models import get_session, Document, DocumentChunk, KBDocument
+from app.data_models import get_session, Document, DocumentChunk, KBDocument
 from app.services.prompt import (
     summarize_prompt,
     get_prompt,

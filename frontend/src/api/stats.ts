@@ -1,7 +1,7 @@
 /**
  * 统计 API
  */
-import axios from './index'
+import api from './index'
 
 export interface StatsSummary {
   kb_count: number

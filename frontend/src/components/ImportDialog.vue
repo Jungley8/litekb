@@ -50,7 +50,7 @@
             
             <n-radio value="webhook">
               <div class="source-item">
-                <n-icon size="32"><WebhookOutline /></n-icon>
+                <n-icon size="32"><Link /></n-icon>
                 <div>
                   <div class="source-title">Webhook</div>
                   <div class="source-desc">通过 Webhook 推送内容</div>
@@ -209,8 +209,8 @@ import {
   CloudUploadOutline,
   DocumentOutline,
   LinkOutline,
-  LogoNoticon,
-  WebhookOutline,
+  LogoPython,
+  Link,
   CheckmarkCircleOutline,
   CloseCircleOutline
 } from '@vicons/ionicons5'

@@ -1,11 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from './views/Home.vue'
-import KnowledgeBases from './views/KnowledgeBases.vue'
-import KBDetail from './views/KBDetail.vue'
-import Chat from './views/Chat.vue'
-import Search from './views/Search.vue'
-import Graph from './views/Graph.vue'
-import Settings from './views/Settings.vue'
+import Home from '../views/Home.vue'
+import KnowledgeBases from '../views/KnowledgeBases.vue'
+import KBDetail from '../views/KBDetail.vue'
+import Chat from '../views/Chat.vue'
+import Search from '../views/Search.vue'
+import Graph from '../views/Graph.vue'
+import Settings from '../views/Settings.vue'
 
 const routes = [
   {

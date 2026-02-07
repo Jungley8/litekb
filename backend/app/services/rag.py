@@ -9,7 +9,7 @@ from loguru import logger
 from app.config import settings
 from app.services.search import hybrid_search, SearchResult
 from app.services.prompt import get_prompt
-from app.models import get_session, Message, Conversation
+from app.data_models import get_session, Message, Conversation
 
 
 @dataclass
