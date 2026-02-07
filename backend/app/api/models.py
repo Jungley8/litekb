@@ -192,7 +192,7 @@ async def new_test_connection(provider: str) -> bool:
 
             await ollama_client.list_models()
             return True
-        except:
+        except Exception:
             return False
     elif provider == "vllm":
         try:
@@ -200,7 +200,7 @@ async def new_test_connection(provider: str) -> bool:
 
             await vllm_client.list_models()
             return True
-        except:
+        except Exception:
             return False
     else:
         # 云端供应商默认成功

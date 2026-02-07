@@ -2,10 +2,12 @@
 分享 API 端点
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
+import secrets
+import uuid
 
 router = APIRouter()
 
@@ -38,13 +40,11 @@ _demo_shares = []
 @router.post("/api/v1/share", response_model=ShareResponse)
 async def create_share(request: CreateShareRequest):
     """创建分享链接"""
-    import secrets
-
     token = secrets.token_urlsafe(16)
-    expires_at = datetime.utcnow() + datetime.timedelta(days=request.expires_in_days)
+    expires_at = datetime.utcnow() + timedelta(days=request.expires_in_days)
 
-    share = {
-        "id": secrets.uuid4().hex[:8],
+    share: Dict[str, Any] = {
+        "id": uuid.uuid4().hex[:8],
         "token": token,
         "url": f"/share/{token}",
         "resource_type": request.resource_type,

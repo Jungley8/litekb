@@ -49,9 +49,10 @@ jobs:
       - name: Run linting
         working-directory: ./backend
         run: |
-          pip install flake8 black
+          pip install flake8 black mypy
           flake8 app/ --max-line-length=100 --exclude=__pycache__,tests
           black --check app/
+          mypy app/ --config-file mypy.ini 2>&1 | tail -5 || true
       
       - name: Run tests
         working-directory: ./backend
