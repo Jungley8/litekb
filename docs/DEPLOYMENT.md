@@ -61,6 +61,37 @@ EOF
 nano .env
 ```
 
+### 4. GitHub Packages 镜像 (可选)
+
+使用 GitHub Container Registry 镜像：
+
+```bash
+# 设置镜像标签 (默认使用 latest)
+export IMAGE_TAG=latest
+
+# 或使用 commit SHA
+export IMAGE_TAG=$(git rev-parse HEAD)
+```
+
+### 5. 自构建镜像
+
+如果需要本地构建：
+
+```bash
+# 克隆并构建
+git clone https://github.com/Jungley8/litekb.git
+cd litekb
+
+# 构建后端
+docker build -t litekb/backend ./backend
+
+# 构建前端
+docker build -t litekb/frontend ./frontend
+
+# 使用本地镜像
+docker-compose -f docker-compose.prod.yml build
+```
+
 ### 4. 必要配置 (.env)
 
 ```bash
@@ -76,7 +107,22 @@ LANGFUSE_PUBLIC_KEY=pk-xxx
 LANGFUSE_SECRET_KEY=sk-xxx
 ```
 
-### 5. 创建必要目录
+### 5. GitHub Packages 镜像认证 (可选)
+
+从 GitHub Container Registry 拉取镜像需要认证：
+
+```bash
+# 登录 GitHub Container Registry
+echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+```
+
+或在服务器上手动登录：
+
+```bash
+docker login ghcr.io -u YOUR_GITHUB_USERNAME -p YOUR_GITHUB_TOKEN
+```
+
+### 6. 创建必要目录
 
 ```bash
 mkdir -p ssl secrets postgres/init grafana/provisioning
@@ -99,9 +145,11 @@ sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem ssl/
 ### 7. 启动服务
 
 ```bash
-# 构建并启动
-docker-compose -f docker-compose.prod.yml build
+# 使用 GitHub Packages 镜像 (自动从 CI 获取)
 docker-compose -f docker-compose.prod.yml up -d
+
+# 或指定版本
+IMAGE_TAG=latest docker-compose -f docker-compose.prod.yml up -d
 
 # 查看日志
 docker-compose -f docker-compose.prod.yml logs -f

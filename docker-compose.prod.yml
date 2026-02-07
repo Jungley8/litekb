@@ -5,10 +5,7 @@ version: '3.8'
 services:
   # ==================== 后端 API ====================
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    image: litekb/backend:latest
+    image: ghcr.io/${GITHUB_REPOSITORY:-Jungley8/litekb}/backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -81,7 +78,7 @@ services:
 
   # ==================== Celery Worker ====================
   celery-worker:
-    image: litekb/backend:latest
+    image: ghcr.io/${GITHUB_REPOSITORY:-Jungley8/litekb}/backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     command: celery -A app.tasks worker --loglevel=info --concurrency=4
     environment:
@@ -102,7 +99,7 @@ services:
 
   # ==================== Celery Beat ====================
   celery-beat:
-    image: litekb/backend:latest
+    image: ghcr.io/${GITHUB_REPOSITORY:-Jungley8/litekb}/backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     command: celery -A app.tasks beat --loglevel=info
     environment:
@@ -116,10 +113,7 @@ services:
 
   # ==================== 前端 ====================
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    image: litekb/frontend:latest
+    image: ghcr.io/${GITHUB_REPOSITORY:-Jungley8/litekb}/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "3000:80"
