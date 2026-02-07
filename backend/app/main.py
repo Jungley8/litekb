@@ -82,10 +82,13 @@ from app.middleware.rate_limit import RateLimitMiddleware
 
 app.add_middleware(RateLimitMiddleware, calls=100, period=60)
 
-# Tracing 中间件 (自动追踪 API 请求)
-from app.tracing.middleware import TracingMiddleware
-
-app.add_middleware(TracingMiddleware)
+# Tracing 中间件 (自动追踪 API 请求) - 可选
+try:
+    from app.tracing.middleware import TracingMiddleware
+    app.add_middleware(TracingMiddleware)
+    print("✅ TracingMiddleware 已启用")
+except ImportError:
+    print("⚠️ TracingMiddleware 不可用 (langfuse 未安装)")
 
 # Helmet Headers (非调试模式)
 if not DEBUG:

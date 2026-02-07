@@ -45,6 +45,7 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-asyncio httpx
           pip install pytest-cov coverage
+          pip install -r requirements-tracing.txt || true
       
       - name: Run linting
         working-directory: ./backend
@@ -94,23 +95,20 @@ jobs:
         working-directory: ./frontend
         run: pnpm run lint
       
-      # Type check and build skipped due to vue-tsc issues
-      # - name: Run type check
-      #   working-directory: ./frontend
-      #   run: pnpm run typecheck
-      
+      # Build skipped due to vue-tsc issues
       # - name: Build
       #   working-directory: ./frontend
       #   run: pnpm run build
       #   env:
       #     VITE_API_URL: http://localhost:8000
       
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/dist/
-          retention-days: 7
+      # Build step disabled - no artifacts to upload
+      # - name: Upload build artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: frontend-build
+      #     path: frontend/dist/
+      #     retention-days: 7
 
   # ==================== Docker 构建并推送到 GitHub Packages ====================
   docker-build:
